@@ -1,5 +1,5 @@
 {
-  "default_profile": "deepseek",
+  "default_profile": "lmstudio",
   "target_language": {
     "name": "Norwegian Bokmål",
     "codes": ["no", "nor", "nob", "nb", "nno"],
@@ -19,40 +19,20 @@
     {"codes": ["it", "ita"], "name": "Italian"}
   ],
   "profiles": {
+    "lmstudio": {
+      "api_url": "http://localhost:1234/v1/chat/completions",
+      "model": "deepseek-r1-distill-qwen-14b",
+      "api_key": "none",
+      "timeout": 600,
+      "batch_size": 100,
+      "parallel": 1
+    },
     "deepseek": {
       "api_url": "https://api.deepseek.com/v1/chat/completions",
       "model": "deepseek-chat",
-      "api_key_env": "DEEPSEEK_API_KEY"
-    },
-    "openai": {
-      "api_url": "https://api.openai.com/v1/chat/completions",
-      "model": "gpt-4o",
-      "api_key_env": "OPENAI_API_KEY"
-    },
-    "groq": {
-      "api_url": "https://api.groq.com/openai/v1/chat/completions",
-      "model": "llama-3.3-70b-versatile",
-      "api_key_env": "GROQ_API_KEY"
-    },
-    "mistral": {
-      "api_url": "https://api.mistral.ai/v1/chat/completions",
-      "model": "mistral-large-latest",
-      "api_key_env": "MISTRAL_API_KEY"
-    },
-    "openrouter": {
-      "api_url": "https://openrouter.ai/api/v1/chat/completions",
-      "model": "deepseek/deepseek-chat",
-      "api_key_env": "OPENROUTER_API_KEY"
-    },
-    "ollama": {
-      "api_url": "http://localhost:11434/v1/chat/completions",
-      "model": "qwen2.5:14b",
-      "api_key": "none"
-    },
-    "lmstudio": {
-      "api_url": "http://localhost:1234/v1/chat/completions",
-      "model": "loaded-model",
-      "api_key": "none"
+      "api_key_env": "DEEPSEEK_API_KEY",
+      "batch_size": 500,
+      "parallel": 3
     }
   }
 }

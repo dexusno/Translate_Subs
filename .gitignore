@@ -19,5 +19,8 @@ Thumbs.db
 Desktop.ini
 .DS_Store
 
+# Models (GGUF files are multi-GB)
+models/
+
 # Logs
 *.log

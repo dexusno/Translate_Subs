@@ -270,6 +270,7 @@ def _llm_translate_batched(
     model: str,
     api_key: str,
     target_name: str = "Norwegian Bokmål",
+    api_timeout: int = 120,
 ) -> List[str]:
     """Translate lines via an OpenAI-compatible LLM API."""
     if not lines:
@@ -318,7 +319,7 @@ def _llm_translate_batched(
                 ],
                 "temperature": 0.3,
             },
-            timeout=120,
+            timeout=api_timeout,
         )
         resp.raise_for_status()
         data = resp.json()
@@ -426,6 +427,7 @@ def translate_srt(
         model=profile["model"],
         api_key=profile["api_key"],
         target_name=target_name,
+        api_timeout=profile.get("timeout", 120),
     )
 
     # Place translated strings back
@@ -1326,10 +1328,10 @@ def main():
         epilog=f"Available LLM profiles: {', '.join(available_profiles)}  (default: {default_profile})",
     )
     parser.add_argument("folder", help="Path to folder to scan recursively")
-    parser.add_argument("--batch-size", type=int, default=500,
-                        help="Subtitle groups per LLM API call (default: 500)")
-    parser.add_argument("--parallel", type=int, default=3,
-                        help="Number of files to translate concurrently (default: 3)")
+    parser.add_argument("--batch-size", type=int, default=None,
+                        help="Subtitle groups per LLM API call (default: from profile or 500)")
+    parser.add_argument("--parallel", type=int, default=None,
+                        help="Number of files to translate concurrently (default: from profile or 3)")
     parser.add_argument("--limit", type=int, default=0,
                         help="Max number of files to translate (0 = unlimited)")
     parser.add_argument("--force", action="store_true",
@@ -1363,6 +1365,11 @@ def main():
     profile = resolve_profile(config, args.profile)
     source_languages = get_source_languages(config)
 
+    # Apply profile defaults for batch_size and parallel, CLI overrides if specified
+    profile_cfg = config["profiles"].get(profile["name"], {})
+    batch_size = args.batch_size if args.batch_size is not None else profile_cfg.get("batch_size", 500)
+    parallel = args.parallel if args.parallel is not None else profile_cfg.get("parallel", 3)
+
     # Check API key (unless dry-run or key is "none" for local models)
     if not profile["api_key"] and profile["api_key"] != "none" and not args.dry_run:
         # Check if we need a key (api_key_env was set but env var is empty)
@@ -1384,7 +1391,7 @@ def main():
     log.info("Target:     %s (sidecar: %s, MKV tag: %s)",
              target_lang["name"], sidecar_ext, target_lang["mkv_tag"])
     log.info("Profile:    %s (%s @ %s)", profile["name"], profile["model"], profile["api_url"])
-    log.info("Batch size: %d / Parallel: %d", args.batch_size, args.parallel)
+    log.info("Batch size: %d / Parallel: %d", batch_size, parallel)
     log.info("Source languages: %s", ", ".join(l["name"] for l in source_languages))
     if args.skip_detect:
         log.info("Language detection: OFF (skipping untagged tracks)")
@@ -1397,8 +1404,8 @@ def main():
 
     start = time.time()
     stats = scan_and_translate(
-        folder, batch_size=args.batch_size, dry_run=args.dry_run,
-        parallel=args.parallel, limit=args.limit, force=args.force,
+        folder, batch_size=batch_size, dry_run=args.dry_run,
+        parallel=parallel, limit=args.limit, force=args.force,
         source_languages=source_languages,
         skip_detect=args.skip_detect,
         skip_clean=args.skip_clean,
