@@ -151,7 +151,6 @@ def mux_single_file(
             "-map", "1",
             "-c", "copy",
             f"-metadata:s:s:{sub_count}", f"language={mkv_tag}",
-            f"-metadata:s:s:{sub_count}", f"handler_name={target_name} (Translated)",
             str(tmp_file),
         ]
 
