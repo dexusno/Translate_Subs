@@ -82,6 +82,9 @@ def resolve_profile(config: dict, profile_name: str | None) -> dict:
         "api_url": p["api_url"],
         "model": p["model"],
         "api_key": api_key,
+        "timeout": p.get("timeout", 120),
+        "batch_size": p.get("batch_size", 500),
+        "parallel": p.get("parallel", 3),
     }
 
 
@@ -1366,9 +1369,8 @@ def main():
     source_languages = get_source_languages(config)
 
     # Apply profile defaults for batch_size and parallel, CLI overrides if specified
-    profile_cfg = config["profiles"].get(profile["name"], {})
-    batch_size = args.batch_size if args.batch_size is not None else profile_cfg.get("batch_size", 500)
-    parallel = args.parallel if args.parallel is not None else profile_cfg.get("parallel", 3)
+    batch_size = args.batch_size if args.batch_size is not None else profile["batch_size"]
+    parallel = args.parallel if args.parallel is not None else profile["parallel"]
 
     # Check API key (unless dry-run or key is "none" for local models)
     if not profile["api_key"] and profile["api_key"] != "none" and not args.dry_run:
