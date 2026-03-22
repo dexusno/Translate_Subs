@@ -124,7 +124,7 @@ def mux_single_file(
     if has_target_embedded(streams, target_codes):
         log.info("  [SKIP] %s already embedded: %s", target_name, media.name)
         # Still delete sidecar if not keeping (track is already in MKV)
-        if not keep_sidecar and srt_path.exists():
+        if not keep_sidecar and not dry_run and srt_path.exists():
             srt_path.unlink()
             log.info("  Deleted redundant sidecar: %s", srt_path.name)
         return True
