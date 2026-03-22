@@ -78,7 +78,7 @@ def run_ffprobe(path: Path) -> list[dict]:
                 "-of", "json",
                 str(path),
             ],
-            capture_output=True, text=True, timeout=30,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30,
         )
         if result.returncode != 0:
             return []
@@ -103,7 +103,7 @@ def _extract_text_sample(media: Path, stream_index: int, max_cues: int = 10) -> 
                 "-c:s", "text",
                 str(tmp),
             ],
-            capture_output=True, text=True, timeout=30,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30,
         )
         if result.returncode != 0 or not tmp.exists():
             return ""
@@ -273,7 +273,7 @@ def remux_without_tracks(media: Path, keep_sub_indices: list[int]) -> bool:
             str(tmp_file),
         ]
 
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600)
 
         if result.returncode != 0:
             log.error("  ffmpeg failed: %s", result.stderr[-200:] if result.stderr else "unknown")

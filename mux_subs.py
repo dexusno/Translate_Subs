@@ -66,7 +66,7 @@ def run_ffprobe(path: Path) -> list[dict]:
                 "-of", "json",
                 str(path),
             ],
-            capture_output=True, text=True, timeout=30,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30,
         )
         if result.returncode != 0:
             return []
@@ -154,7 +154,7 @@ def mux_single_file(
             str(tmp_file),
         ]
 
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600)
 
         if result.returncode != 0:
             log.error("  ffmpeg failed: %s", result.stderr[-200:] if result.stderr else "unknown")

@@ -468,7 +468,7 @@ def run_ffprobe(path: Path) -> list[dict]:
                 "-of", "json",
                 str(path),
             ],
-            capture_output=True, text=True, timeout=30,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30,
         )
         if result.returncode != 0:
             return []
@@ -587,7 +587,7 @@ def _extract_text_sample(media: Path, stream_index: int, max_cues: int = 10) -> 
                 "-c:s", "text",
                 str(tmp),
             ],
-            capture_output=True, text=True, timeout=30,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30,
         )
         if result.returncode != 0 or not tmp.exists():
             return ""
@@ -685,7 +685,7 @@ def _tag_track_language(media: Path, stream_index: int, lang_code: str) -> bool:
             str(tmp_file),
         ]
 
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600)
 
         if result.returncode != 0:
             log.error("  Tag failed: %s", result.stderr[-200:] if result.stderr else "unknown")
@@ -730,7 +730,7 @@ def extract_subtitle_track(media_path: Path, stream_index: int, output: Path) ->
                 "-c:s", "text",
                 str(output),
             ],
-            capture_output=True, text=True, timeout=120,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120,
         )
         return result.returncode == 0 and output.exists() and output.stat().st_size > 0
     except (subprocess.TimeoutExpired, FileNotFoundError):
@@ -747,7 +747,7 @@ def convert_ass_to_srt(ass_path: Path, srt_output: Path) -> bool:
                 "-c:s", "srt",
                 str(srt_output),
             ],
-            capture_output=True, text=True, timeout=60,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60,
         )
         return result.returncode == 0 and srt_output.exists() and srt_output.stat().st_size > 0
     except (subprocess.TimeoutExpired, FileNotFoundError):
