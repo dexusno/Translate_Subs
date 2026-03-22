@@ -3,34 +3,90 @@
     Install and configure Translate Subs.
 
 .DESCRIPTION
-    Checks prerequisites (Python, ffmpeg), installs Python dependencies,
-    and sets up the .env file for API keys.
+    Checks prerequisites (Python, ffmpeg, git), clones the repository if needed,
+    installs Python dependencies, and sets up the .env file for API keys.
+
+    Can be run two ways:
+      1. One-liner from PowerShell:  irm https://raw.githubusercontent.com/dexusno/Translate_Subs/main/install.ps1 | iex
+      2. From inside the cloned repo: .\install.ps1
 
 .EXAMPLE
+    irm https://raw.githubusercontent.com/dexusno/Translate_Subs/main/install.ps1 | iex
     .\install.ps1
     .\install.ps1 -PythonExe "C:\Python311\python.exe"
 #>
 param(
     [Parameter(Mandatory = $false)]
-    [string]$PythonExe = ""
+    [string]$PythonExe = "",
+
+    [Parameter(Mandatory = $false)]
+    [string]$InstallDir = ""
 )
 
 $ErrorActionPreference = "Stop"
+$RepoUrl = "https://github.com/dexusno/Translate_Subs.git"
 
 Write-Host ""
 Write-Host "  =====================================" -ForegroundColor Cyan
-Write-Host "    Translate Subs — Install" -ForegroundColor Cyan
+Write-Host "    Translate Subs - Install" -ForegroundColor Cyan
 Write-Host "  =====================================" -ForegroundColor Cyan
 Write-Host ""
+
+# ── Determine project directory ──────────────────────────────────────────────
+
+# Check if we're already inside the cloned repo
+$scriptDir = $null
+$needsClone = $true
+
+# If run from a file (.\install.ps1), use that directory
+if ($MyInvocation.MyCommand.Path) {
+    $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+    if (Test-Path (Join-Path $scriptDir "translate_series.py")) {
+        $needsClone = $false
+    }
+}
+
+if ($needsClone) {
+    # Running via irm | iex — need to clone first
+    # Check git is available
+    try {
+        $null = & git --version 2>&1
+    } catch {
+        Write-Host "  [ERROR] git is not installed or not on PATH." -ForegroundColor Red
+        Write-Host "          Install git from https://git-scm.com/downloads" -ForegroundColor Yellow
+        Write-Host "          or run: winget install Git.Git" -ForegroundColor Yellow
+        Write-Host ""
+        exit 1
+    }
+
+    # Determine install location
+    if ($InstallDir -eq "") {
+        $InstallDir = Join-Path $PWD "Translate_Subs"
+    }
+
+    if (Test-Path (Join-Path $InstallDir "translate_series.py")) {
+        Write-Host "  [OK] Repository already cloned at: $InstallDir" -ForegroundColor Green
+    } else {
+        Write-Host "  Cloning repository to: $InstallDir" -ForegroundColor DarkGray
+        & git clone $RepoUrl $InstallDir
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "  [ERROR] git clone failed." -ForegroundColor Red
+            exit 1
+        }
+        Write-Host "  [OK] Repository cloned" -ForegroundColor Green
+    }
+
+    $scriptDir = $InstallDir
+}
+
+Write-Host "  Project: $scriptDir" -ForegroundColor DarkGray
 
 # ── Find Python ──────────────────────────────────────────────────────────────
 
 if ($PythonExe -eq "") {
-    # Try common locations
     $candidates = @(
         "python"
         "python3"
-        "D:\anaconda3\python.exe"
         "$env:LOCALAPPDATA\Programs\Python\Python313\python.exe"
         "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe"
         "$env:LOCALAPPDATA\Programs\Python\Python311\python.exe"
@@ -105,7 +161,6 @@ Write-Host "  [OK] requests, python-dotenv installed" -ForegroundColor Green
 
 # ── Set up .env ──────────────────────────────────────────────────────────────
 
-$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $envFile = Join-Path $scriptDir ".env"
 $envExample = Join-Path $scriptDir ".env.example"
 
@@ -118,7 +173,7 @@ if (Test-Path -LiteralPath $envFile) {
     Write-Host "  !! Edit .env and add your API key for your chosen provider." -ForegroundColor Yellow
     Write-Host "     See llm_config.json for available profiles." -ForegroundColor Yellow
 } else {
-    Write-Host "  [WARNING] .env.example not found — create .env manually." -ForegroundColor Yellow
+    Write-Host "  [WARNING] .env.example not found - create .env manually." -ForegroundColor Yellow
 }
 
 # ── Update PowerShell wrappers with detected Python path ─────────────────────
@@ -154,6 +209,8 @@ if (Test-Path -LiteralPath $configFile) {
     $config = Get-Content -LiteralPath $configFile -Raw | ConvertFrom-Json
     $profiles = ($config.profiles | Get-Member -MemberType NoteProperty).Name -join ", "
     $default = $config.default_profile
+    $target = $config.target_language.name
+    Write-Host "  Target:    $target" -ForegroundColor DarkGray
     Write-Host "  Profiles:  $profiles" -ForegroundColor DarkGray
     Write-Host "  Default:   $default" -ForegroundColor DarkGray
 }
@@ -163,7 +220,8 @@ Write-Host ""
 Write-Host "  Install complete." -ForegroundColor Green
 Write-Host ""
 Write-Host "  Next steps:" -ForegroundColor Cyan
-Write-Host "    1. Edit .env and add your API key" -ForegroundColor White
-Write-Host "    2. Test with:" -ForegroundColor White
+Write-Host "    1. cd $scriptDir" -ForegroundColor White
+Write-Host "    2. Edit .env and add your API key" -ForegroundColor White
+Write-Host "    3. Test with:" -ForegroundColor White
 Write-Host '       .\translate_series.ps1 "D:\TvSeries\Some Show" -DryRun' -ForegroundColor White
 Write-Host ""

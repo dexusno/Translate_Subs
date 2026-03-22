@@ -24,19 +24,19 @@ Supports multiple LLM providers out of the box: DeepSeek, OpenAI, Groq, Mistral,
 
 ## Quick Start
 
-### Automated Install (Windows)
+### One-liner Install (Windows PowerShell)
 
 ```powershell
-.\install.ps1
+irm https://raw.githubusercontent.com/dexusno/Translate_Subs/main/install.ps1 | iex
 ```
 
-This will check prerequisites, install Python packages, and set up your `.env` file.
+This will clone the repo, install Python packages, and set up your `.env` file.
 
 ### Manual Install
 
 ```powershell
-git clone https://github.com/youruser/translate-subs.git
-cd translate-subs
+git clone https://github.com/dexusno/Translate_Subs.git
+cd Translate_Subs
 pip install requests python-dotenv
 cp .env.example .env
 # Edit .env and add your API key
