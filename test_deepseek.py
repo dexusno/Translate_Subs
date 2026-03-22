@@ -1,6 +1,6 @@
 """
 Test: translate test2.srt using the DeepSeek API.
-Loads target language from llm_config.json (same config as translate_series.py).
+Loads target language from llm_config.json (same config as translate_subs.py).
 """
 
 import sys
@@ -18,9 +18,9 @@ from dotenv import load_dotenv
 if sys.platform == "win32" and hasattr(sys.stdout, "buffer"):
     sys.stdout.reconfigure(encoding="utf-8")
 
-# Try importing SRT utilities from translate_series (preferred) or app/srtxlate (legacy)
+# Try importing SRT utilities from translate_subs (preferred) or app/srtxlate (legacy)
 try:
-    from translate_series import (
+    from translate_subs import (
         _split_srt, _join_srt, _protect_tags, _restore_tags,
         _is_index_line, _is_time_line, _is_allcaps_marker,
         _nfc, _strip_bom, _split_to_n_lines_preserving_words,

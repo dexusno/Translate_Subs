@@ -2,12 +2,14 @@
 
 Batch-translate subtitles to any target language using LLM APIs. Scans media folders recursively, finds subtitles in any supported source language (embedded or sidecar), translates them, and optionally muxes the result back into MKV containers.
 
-Supports multiple LLM providers out of the box: DeepSeek, OpenAI, Groq, Mistral, OpenRouter, Ollama, and LM Studio.
+Works with TV series, movies, documentaries, or any media library. Supports multiple LLM providers out of the box: DeepSeek, OpenAI, Groq, Mistral, OpenRouter, Ollama, and LM Studio.
 
 ## Features
 
 - **Configurable target language** — translate to Norwegian, French, German, or any language
 - Translates from English, Danish, Swedish, German, Dutch, French, Spanish, Portuguese, and Italian (configurable)
+- **Works with any media** — TV series, movies, documentaries, any folder structure
+- Supports MKV, MP4, AVI, MOV, WebM, and OGM video files
 - Detects untagged subtitle tracks via LLM and tags them in the MKV
 - Muxes translated sidecar files into MKV containers as embedded tracks
 - Cleans unwanted subtitle tracks from MKVs (keeps target language + configured extras)
@@ -45,7 +47,7 @@ cp .env.example .env
 ### Verify
 
 ```powershell
-.\translate_series.ps1 "D:\TvSeries\Some Show" -DryRun
+.\translate_subs.ps1 "D:\Media\Some Folder" -DryRun
 ```
 
 ## Configuration
@@ -68,7 +70,7 @@ Set the target language in `llm_config.json`:
 |-------|---------|---------|
 | `name` | Used in the LLM translation prompt | `"Norwegian Bokmål"` |
 | `codes` | ISO codes that mean "target already exists" (skip check) | `["no", "nor", "nob"]` |
-| `sidecar_code` | Output filename: `Episode.{code}.srt` | `"no"` → `Episode.no.srt` |
+| `sidecar_code` | Output filename: `Movie.{code}.srt` | `"no"` → `Movie.no.srt` |
 | `mkv_tag` | Language tag when muxing into MKV | `"nob"` |
 | `keep_with` | Additional languages to keep when cleaning (target is always kept) | `["en", "eng"]` |
 
@@ -143,33 +145,41 @@ For local models that don't need a key, use `"api_key": "none"` instead of `"api
 
 ### Translate a folder
 
+Point the script at any folder containing video files. It scans recursively, so you can target a single movie folder, a TV series, or an entire library root.
+
 ```powershell
-# Translate using default profile (DeepSeek)
-.\translate_series.ps1 "D:\TvSeries\Breaking Bad"
+# Translate a movie folder
+.\translate_subs.ps1 "D:\Movies\Inception (2010)"
+
+# Translate a TV series (all seasons)
+.\translate_subs.ps1 "D:\TvSeries\Breaking Bad"
+
+# Translate an entire library
+.\translate_subs.ps1 "D:\Media"
 
 # Use a different LLM provider
-.\translate_series.ps1 "D:\TvSeries\Show" -Profile openai
+.\translate_subs.ps1 "D:\Movies" -Profile openai
 
 # Preview what would be translated
-.\translate_series.ps1 "D:\TvSeries\Show" -DryRun
+.\translate_subs.ps1 "D:\Media\Documentaries" -DryRun
 
 # Limit to 5 files (useful for testing)
-.\translate_series.ps1 "D:\TvSeries\Show" -Limit 5
+.\translate_subs.ps1 "D:\Movies" -Limit 5
 
 # Retranslate files that already have target subs
-.\translate_series.ps1 "D:\TvSeries\Show" -Force
+.\translate_subs.ps1 "D:\TvSeries\Show" -Force
 
 # Keep sidecar files after muxing (for spot-checking translations)
-.\translate_series.ps1 "D:\TvSeries\Show" -KeepSidecar
+.\translate_subs.ps1 "D:\Movies\Film" -KeepSidecar
 
 # Skip cleaning unwanted subtitle tracks
-.\translate_series.ps1 "D:\TvSeries\Show" -SkipClean
+.\translate_subs.ps1 "D:\TvSeries\Show" -SkipClean
 
 # Write log output to a file
-.\translate_series.ps1 "D:\TvSeries\Show" -LogFile "C:\logs\translate.log"
+.\translate_subs.ps1 "D:\Media" -LogFile "C:\logs\translate.log"
 
 # UNC paths (network shares) are supported
-.\translate_series.ps1 "\\nas\media\Tv\Some Show"
+.\translate_subs.ps1 "\\nas\media\Movies"
 ```
 
 ### Mux existing sidecar files into MKVs
@@ -177,9 +187,9 @@ For local models that don't need a key, use `"api_key": "none"` instead of `"api
 For folders that already have translated sidecar files from a previous run:
 
 ```powershell
-.\mux_subs.ps1 "D:\TvSeries\Some Show"
-.\mux_subs.ps1 "D:\TvSeries\Some Show" -KeepSidecar
-.\mux_subs.ps1 "D:\TvSeries\Some Show" -DryRun
+.\mux_subs.ps1 "D:\Movies\Inception (2010)"
+.\mux_subs.ps1 "D:\TvSeries\Show" -KeepSidecar
+.\mux_subs.ps1 "D:\Media" -DryRun
 ```
 
 ### Clean unwanted subtitle tracks
@@ -187,15 +197,15 @@ For folders that already have translated sidecar files from a previous run:
 Remove subtitle tracks that aren't in the keep list:
 
 ```powershell
-.\clean_subs.ps1 "D:\TvSeries\Some Show"
-.\clean_subs.ps1 "D:\TvSeries\Some Show" -DryRun
+.\clean_subs.ps1 "D:\Movies"
+.\clean_subs.ps1 "D:\TvSeries\Show" -DryRun
 ```
 
 ## Scripts
 
 | Script | Purpose |
 |--------|---------|
-| `translate_series.ps1` / `.py` | Main script — translate, mux, and clean in one pass |
+| `translate_subs.ps1` / `.py` | Main script — translate, mux, and clean in one pass |
 | `mux_subs.ps1` / `.py` | Mux sidecar subtitles into MKV containers |
 | `clean_subs.ps1` / `.py` | Remove unwanted subtitle tracks from MKVs |
 | `test_deepseek.py` | Standalone test for the translation API |
@@ -208,25 +218,34 @@ For each video file found:
 2. **Find source subtitles** — try sidecar files first, then embedded tracks, in language priority order
 3. **Detect untagged tracks** — if an embedded track has no language tag, extract a sample and ask the LLM to identify it, then tag the track in the MKV
 4. **Translate** — send subtitle text to the LLM in batches, write result as sidecar file
-5. **Mux** — embed the sidecar into the MKV as a target language track
-6. **Clean** — remove unwanted subtitle tracks (anything not in the keep list)
+5. **Mux** — embed the sidecar into the MKV as a target language track (MKV only)
+6. **Clean** — remove unwanted subtitle tracks (anything not in the keep list, MKV only)
 
-Files that are skipped (target already exists) still get a quick clean check to remove any unwanted tracks.
+For non-MKV files (MP4, AVI, etc.), translation produces a sidecar `.srt` file that sits next to the video. Most players (Plex, Jellyfin, VLC, Kodi) pick up sidecar files automatically.
 
 ## Folder Structure
 
-The scripts expect standard media folder structures:
+The scripts work with any folder structure. Just point them at a folder and they'll find all video files recursively:
 
 ```
-TvSeries/
-  Show Name/
-    Season 01/
-      Episode.S01E01.mkv
-      Episode.S01E02.mkv
-
 Movies/
-  Movie Name (2024)/
-    Movie Name (2024).mkv
+  Inception (2010)/
+    Inception (2010).mkv
+
+TvSeries/
+  Breaking Bad/
+    Season 01/
+      Breaking.Bad.S01E01.mkv
+
+Documentaries/
+  Planet Earth II/
+    Planet.Earth.II.E01.mkv
+
+# Or point at a top-level library folder to process everything
+Media/
+  Movies/
+  TvSeries/
+  Documentaries/
 ```
 
 ## Troubleshooting

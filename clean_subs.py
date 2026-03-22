@@ -185,7 +185,7 @@ def classify_subtitle_tracks(
 
     Args:
         keep_languages: Override the default KEEP_LANGUAGES set.
-            When called from translate_series.py, this is built from config.
+            When called from translate_subs.py, this is built from config.
 
     Returns (keep, remove) where each is a list of stream dicts.
     """

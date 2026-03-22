@@ -1,14 +1,14 @@
 """
-translate_series.py — Scan a TV/movie folder, find subtitles in any supported
+translate_subs.py — Scan a media folder, find subtitles in any supported
 source language, translate them to a configurable target language via LLM.
 
 Target language, source languages, and LLM provider are configured in
 llm_config.json next to this script.
 
 Usage:
-    python translate_series.py "D:\\vault\\tv-series\\Example Series\\"
-    python translate_series.py --batch-size 500 --parallel 3 --dry-run "/mnt/media/Tv/Ugly Betty"
-    python translate_series.py --profile openai "D:\\Movies\\Some Movie"
+    python translate_subs.py "D:\\Movies\\Some Movie"
+    python translate_subs.py --batch-size 500 --parallel 3 --dry-run "/mnt/media/Tv/Ugly Betty"
+    python translate_subs.py --profile openai "D:\\TvSeries\\Breaking Bad"
 """
 
 import argparse
@@ -48,7 +48,7 @@ BITMAP_SUB_CODECS = {"hdmv_pgs_subtitle", "dvd_subtitle", "xsub"}
 HI_PATTERNS = {"sdh", "hearing", "hearing-impaired", "hearing impaired",
                 "hi", "cc", "closed captions", "closed-captions", "captions"}
 
-log = logging.getLogger("translate_series")
+log = logging.getLogger("translate_subs")
 
 # ── LLM config loading ───────────────────────────────────────────────────────
 
@@ -1379,7 +1379,7 @@ def main():
     mode = "DRY-RUN" if args.dry_run else "LIVE"
     if args.force:
         mode += " + FORCE"
-    log.info("=== translate_series [%s] ===", mode)
+    log.info("=== translate_subs [%s] ===", mode)
     log.info("Folder:     %s", folder)
     log.info("Target:     %s (sidecar: %s, MKV tag: %s)",
              target_lang["name"], sidecar_ext, target_lang["mkv_tag"])

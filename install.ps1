@@ -41,7 +41,7 @@ $needsClone = $true
 # If run from a file (.\install.ps1), use that directory
 if ($MyInvocation.MyCommand.Path) {
     $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-    if (Test-Path (Join-Path $scriptDir "translate_series.py")) {
+    if (Test-Path (Join-Path $scriptDir "translate_subs.py")) {
         $needsClone = $false
     }
 }
@@ -64,7 +64,7 @@ if ($needsClone) {
         $InstallDir = Join-Path $PWD "Translate_Subs"
     }
 
-    if (Test-Path (Join-Path $InstallDir "translate_series.py")) {
+    if (Test-Path (Join-Path $InstallDir "translate_subs.py")) {
         Write-Host "  [OK] Repository already cloned at: $InstallDir" -ForegroundColor Green
     } else {
         Write-Host "  Cloning repository to: $InstallDir" -ForegroundColor DarkGray
@@ -178,7 +178,7 @@ if (Test-Path -LiteralPath $envFile) {
 
 # ── Update PowerShell wrappers with detected Python path ─────────────────────
 
-$wrappers = @("translate_series.ps1", "mux_subs.ps1", "clean_subs.ps1")
+$wrappers = @("translate_subs.ps1", "mux_subs.ps1", "clean_subs.ps1")
 $resolvedPython = (Get-Command $PythonExe -ErrorAction SilentlyContinue).Source
 if (-not $resolvedPython) { $resolvedPython = $PythonExe }
 
@@ -223,5 +223,5 @@ Write-Host "  Next steps:" -ForegroundColor Cyan
 Write-Host "    1. cd $scriptDir" -ForegroundColor White
 Write-Host "    2. Edit .env and add your API key" -ForegroundColor White
 Write-Host "    3. Test with:" -ForegroundColor White
-Write-Host '       .\translate_series.ps1 "D:\TvSeries\Some Show" -DryRun' -ForegroundColor White
+Write-Host '       .\translate_subs.ps1 "D:\Media\Some Folder" -DryRun' -ForegroundColor White
 Write-Host ""

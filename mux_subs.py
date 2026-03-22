@@ -103,7 +103,7 @@ def mux_single_file(
     """Mux a sidecar into an MKV as an embedded subtitle track.
 
     Returns True on success (or skip), False on error.
-    Exported for import by translate_series.py.
+    Exported for import by translate_subs.py.
     """
     if target_codes is None:
         target_codes = {"no", "nor", "nob", "nb", "nno"}

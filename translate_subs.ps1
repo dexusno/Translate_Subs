@@ -1,19 +1,19 @@
 <#
 .SYNOPSIS
-    Translate subtitles to Norwegian Bokmal for a TV/movie folder.
+    Translate subtitles in a media folder to a configurable target language.
 
 .DESCRIPTION
-    PowerShell wrapper for translate_series.py. Scans a folder recursively for
-    video files, finds subtitles in any supported source language (English,
-    Danish, Swedish, etc.), and translates them to Norwegian using a
-    configurable LLM backend.
+    PowerShell wrapper for translate_subs.py. Scans a folder recursively for
+    video files (MKV, MP4, etc.), finds subtitles in any supported source
+    language, and translates them using a configurable LLM backend.
+    Target language and LLM provider are set in llm_config.json.
 
 .EXAMPLE
-    .\translate_series.ps1 "D:\TvSeries\Beyond Paradise"
-    .\translate_series.ps1 "\\nas\media\Tv\Ugly Betty" -DryRun
-    .\translate_series.ps1 "D:\Movies\Some, Movie (2024)" -Profile deepseek -BatchSize 200
-    .\translate_series.ps1 "D:\TvSeries\Show" -SkipClean -DryRun
-    .\translate_series.ps1 "D:\TvSeries\Show" -Profile local -SkipDetect
+    .\translate_subs.ps1 "D:\Movies\Inception (2010)"
+    .\translate_subs.ps1 "D:\TvSeries\Breaking Bad" -DryRun
+    .\translate_subs.ps1 "D:\Media\Documentaries" -Profile openai -BatchSize 200
+    .\translate_subs.ps1 "\\nas\media\Movies" -SkipClean -DryRun
+    .\translate_subs.ps1 "D:\TvSeries\Show" -SkipDetect
 #>
 param(
     [Parameter(Mandatory = $false, Position = 0)]
@@ -53,7 +53,7 @@ param(
 # ── Configuration ─────────────────────────────────────────────────────────────
 
 $PythonExe    = "D:\anaconda3\python.exe"
-$PythonScript = Join-Path $PSScriptRoot "translate_series.py"
+$PythonScript = Join-Path $PSScriptRoot "translate_subs.py"
 
 # ── Validation ────────────────────────────────────────────────────────────────
 
@@ -63,16 +63,16 @@ function Exit-WithError {
     Write-Host "  [ERROR] $Message" -ForegroundColor Red
     Write-Host ""
     Write-Host "  Usage:" -ForegroundColor Yellow
-    Write-Host '    .\translate_series.ps1 "D:\TvSeries\Some Show"'
-    Write-Host '    .\translate_series.ps1 "\\nas\media\Tv\Show Name" -DryRun'
-    Write-Host '    .\translate_series.ps1 "D:\Movies" -BatchSize 200 -Parallel 2'
-    Write-Host '    .\translate_series.ps1 "D:\TvSeries\Long Show" -Limit 3'
-    Write-Host '    .\translate_series.ps1 "D:\TvSeries\Redo" -Force'
-    Write-Host '    .\translate_series.ps1 "D:\TvSeries\Show" -Profile deepseek -DryRun'
-    Write-Host '    .\translate_series.ps1 "D:\TvSeries\Show" -SkipClean'
-    Write-Host '    .\translate_series.ps1 "D:\TvSeries\Show" -SkipDetect'
-    Write-Host '    .\translate_series.ps1 "D:\TvSeries\Show" -KeepSidecar'
-    Write-Host '    .\translate_series.ps1 "D:\TvSeries\Big Job" -LogFile "C:\logs\translate.log"'
+    Write-Host '    .\translate_subs.ps1 "D:\Movies\Inception (2010)"'
+    Write-Host '    .\translate_subs.ps1 "\\nas\media\Movies" -DryRun'
+    Write-Host '    .\translate_subs.ps1 "D:\TvSeries\Show" -BatchSize 200 -Parallel 2'
+    Write-Host '    .\translate_subs.ps1 "D:\Media\Documentaries" -Limit 3'
+    Write-Host '    .\translate_subs.ps1 "D:\TvSeries\Show" -Force'
+    Write-Host '    .\translate_subs.ps1 "D:\Movies" -Profile openai -DryRun'
+    Write-Host '    .\translate_subs.ps1 "D:\TvSeries\Show" -SkipClean'
+    Write-Host '    .\translate_subs.ps1 "D:\TvSeries\Show" -SkipDetect'
+    Write-Host '    .\translate_subs.ps1 "D:\TvSeries\Show" -KeepSidecar'
+    Write-Host '    .\translate_subs.ps1 "D:\Media" -LogFile "C:\logs\translate.log"'
     Write-Host ""
     exit 1
 }
@@ -108,7 +108,7 @@ if (-not (Test-Path -LiteralPath $PythonExe)) {
 
 # Check the Python script exists
 if (-not (Test-Path -LiteralPath $PythonScript)) {
-    Exit-WithError "translate_series.py not found at: $PythonScript"
+    Exit-WithError "translate_subs.py not found at: $PythonScript"
 }
 
 # Warn if .env missing (non-dry-run only)
