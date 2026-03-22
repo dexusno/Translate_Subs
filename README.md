@@ -141,6 +141,36 @@ Then add `MY_PROVIDER_API_KEY=your-key` to `.env`.
 
 For local models that don't need a key, use `"api_key": "none"` instead of `"api_key_env"`.
 
+### Per-Profile Settings
+
+Each profile can include `batch_size`, `parallel`, and `timeout` to tune performance. Cloud APIs handle large batches efficiently, while local models benefit from smaller batches and longer timeouts:
+
+```json
+"deepseek": {
+  "api_url": "https://api.deepseek.com/v1/chat/completions",
+  "model": "deepseek-chat",
+  "api_key_env": "DEEPSEEK_API_KEY",
+  "batch_size": 500,
+  "parallel": 3
+},
+"lmstudio": {
+  "api_url": "http://localhost:1234/v1/chat/completions",
+  "model": "deepseek-r1-distill-qwen-14b",
+  "api_key": "none",
+  "timeout": 600,
+  "batch_size": 100,
+  "parallel": 1
+}
+```
+
+| Setting | Description | Cloud default | Local default |
+|---------|-------------|---------------|---------------|
+| `batch_size` | Subtitle groups per API call | 500 | 100 |
+| `parallel` | Concurrent files being translated | 3 | 1 |
+| `timeout` | Seconds before API call times out | 120 | 600 |
+
+CLI flags (`-BatchSize`, `-Parallel`) override profile settings when specified.
+
 ## Usage
 
 ### Translate a folder
