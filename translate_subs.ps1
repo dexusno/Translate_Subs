@@ -20,10 +20,10 @@ param(
     [string]$Folder,
 
     [Parameter(Mandatory = $false)]
-    [int]$BatchSize = 500,
+    [int]$BatchSize = 0,
 
     [Parameter(Mandatory = $false)]
-    [int]$Parallel = 3,
+    [int]$Parallel = 0,
 
     [Parameter(Mandatory = $false)]
     [int]$Limit = 0,
@@ -119,11 +119,11 @@ if (-not (Test-Path -LiteralPath $EnvFile) -and -not $DryRun) {
     Write-Host ""
 }
 
-# Validate numeric parameters
-if ($BatchSize -lt 1) {
+# Validate numeric parameters (0 = not specified, use profile default)
+if ($BatchSize -lt 0) {
     Exit-WithError "BatchSize must be at least 1 (got $BatchSize)."
 }
-if ($Parallel -lt 1) {
+if ($Parallel -lt 0) {
     Exit-WithError "Parallel must be at least 1 (got $Parallel)."
 }
 
@@ -131,9 +131,15 @@ if ($Parallel -lt 1) {
 
 $pyArgs = @(
     $PythonScript
-    "--batch-size", $BatchSize
-    "--parallel", $Parallel
 )
+
+if ($BatchSize -gt 0) {
+    $pyArgs += @("--batch-size", $BatchSize)
+}
+
+if ($Parallel -gt 0) {
+    $pyArgs += @("--parallel", $Parallel)
+}
 
 if ($Limit -gt 0) {
     $pyArgs += @("--limit", $Limit)
@@ -177,7 +183,9 @@ Write-Host "  ---------------------------------------------------" -ForegroundCo
 Write-Host "  Python:    $PythonExe" -ForegroundColor DarkGray
 Write-Host "  Folder:    $ResolvedFolder" -ForegroundColor DarkGray
 Write-Host "  Profile:   $ProfileDisplay" -ForegroundColor DarkGray
-Write-Host "  Batch:     $BatchSize / Parallel: $Parallel" -ForegroundColor DarkGray
+$BatchDisplay = if ($BatchSize -gt 0) { "$BatchSize" } else { "(profile default)" }
+$ParallelDisplay = if ($Parallel -gt 0) { "$Parallel" } else { "(profile default)" }
+Write-Host "  Batch:     $BatchDisplay / Parallel: $ParallelDisplay" -ForegroundColor DarkGray
 if ($Limit -gt 0) {
     Write-Host "  Limit:     $Limit files" -ForegroundColor DarkGray
 }
