@@ -181,7 +181,7 @@ def mux_single_file(
         # Delete sidecar unless keeping
         if not keep_sidecar:
             srt_path.unlink()
-            log.info("  Deleted sidecar: %s", srt_path.name)
+            log.debug("  Deleted sidecar: %s", srt_path.name)
 
         return True
 

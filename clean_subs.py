@@ -204,42 +204,42 @@ def classify_subtitle_tracks(
         title = tags.get("title", "")
 
         if lang and lang in langs_to_keep:
-            log.info("  [KEEP]   idx=%d %s lang=%s %s", idx, codec, lang, title)
+            log.debug("  [KEEP]   idx=%d %s lang=%s %s", idx, codec, lang, title)
             keep.append(s)
             continue
 
         if lang and lang not in langs_to_keep:
-            log.info("  [REMOVE] idx=%d %s lang=%s %s", idx, codec, lang, title)
+            log.debug("  [REMOVE] idx=%d %s lang=%s %s", idx, codec, lang, title)
             remove.append(s)
             continue
 
         # Undefined language tag
         if skip_detect:
-            log.info("  [KEEP]   idx=%d %s lang=??? (skip-detect) %s", idx, codec, title)
+            log.debug("  [KEEP]   idx=%d %s lang=??? (skip-detect) %s", idx, codec, title)
             keep.append(s)
             continue
 
         # Try to detect language via text extraction + API
         if codec in TEXT_SUB_CODECS:
-            log.info("  [DETECT] idx=%d %s — extracting sample...", idx, codec)
+            log.debug("  [DETECT] idx=%d %s — extracting sample...", idx, codec)
             sample = _extract_text_sample(media, idx)
             if sample:
                 detected = identify_language(sample)
                 if detected:
                     if detected in langs_to_keep:
-                        log.info("  [KEEP]   idx=%d detected=%s", idx, detected)
+                        log.debug("  [KEEP]   idx=%d detected=%s", idx, detected)
                         keep.append(s)
                     else:
-                        log.info("  [REMOVE] idx=%d detected=%s", idx, detected)
+                        log.debug("  [REMOVE] idx=%d detected=%s", idx, detected)
                         remove.append(s)
                     continue
 
             # Detection failed — keep to be safe
-            log.info("  [KEEP]   idx=%d %s — detection failed, keeping", idx, codec)
+            log.debug("  [KEEP]   idx=%d %s — detection failed, keeping", idx, codec)
             keep.append(s)
         else:
             # Bitmap sub with no language — can't extract text, keep to be safe
-            log.info("  [KEEP]   idx=%d %s lang=??? (bitmap, can't detect)", idx, codec)
+            log.debug("  [KEEP]   idx=%d %s lang=??? (bitmap, can't detect)", idx, codec)
             keep.append(s)
 
     return keep, remove

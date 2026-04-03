@@ -15,6 +15,7 @@ import argparse
 import json
 import logging
 import os
+import queue
 import re
 import subprocess
 import sys
@@ -24,7 +25,7 @@ import time
 import unicodedata
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, Generator, List, Optional, Tuple
 
 import requests
 from dotenv import load_dotenv
@@ -251,6 +252,7 @@ _SENTINEL = "__NL__"
 def _build_system_prompt(source_lang: str, target_name: str) -> str:
     """Build the translation system prompt for the given source and target languages."""
     return (
+        f"/no_think\n"
         f"You are a professional subtitle translator. "
         f"Translate the following {source_lang} subtitle lines to {target_name}. "
         f"Each line is prefixed with [N] where N is the line number. "
@@ -356,7 +358,7 @@ def _llm_translate_batched(
         r = _restore_tags(text, tags)
         restored.append(_nfc(r))
 
-    log.info("  API usage — prompt: %d, completion: %d, total: %d",
+    log.debug("  API usage — prompt: %d, completion: %d, total: %d",
              total_usage["prompt_tokens"], total_usage["completion_tokens"],
              total_usage["total_tokens"])
 
@@ -502,11 +504,24 @@ def _is_hi_track(stream: dict) -> bool:
     return any(p in combined for p in HI_PATTERNS)
 
 
+def _is_forced_track(stream: dict) -> bool:
+    """Check if a subtitle track is marked as Forced."""
+    tags = stream.get("tags") or {}
+    title = tags.get("title", "").lower()
+    disp = stream.get("disposition", {})
+    return "forced" in title or disp.get("forced", 0) == 1
+
+
 # ── Generalized subtitle finders ─────────────────────────────────────────────
 
 
 def find_best_text_sub(streams: list[dict], lang_codes: set[str]) -> dict | None:
-    """Find the best text-based subtitle track for the given language codes, preferring non-HI."""
+    """Find the best text-based subtitle track for the given language codes.
+
+    Priority: non-forced non-HI > non-forced HI > forced.
+    Forced tracks only contain foreign-language dialogue lines and are
+    unsuitable as a translation source.
+    """
     candidates = []
     for s in streams:
         lang = (s.get("tags") or {}).get("language", "").lower()
@@ -517,9 +532,17 @@ def find_best_text_sub(streams: list[dict], lang_codes: set[str]) -> dict | None
     if not candidates:
         return None
 
-    non_hi = [s for s in candidates if not _is_hi_track(s)]
-    if non_hi:
-        return non_hi[0]
+    # Best: non-forced, non-HI (regular full subs)
+    regular = [s for s in candidates if not _is_forced_track(s) and not _is_hi_track(s)]
+    if regular:
+        return regular[0]
+
+    # Next: non-forced HI/SDH (still full subs, just with descriptions)
+    non_forced_hi = [s for s in candidates if not _is_forced_track(s)]
+    if non_forced_hi:
+        return non_forced_hi[0]
+
+    # Last resort: forced track (partial subs, only foreign dialogue)
     return candidates[0]
 
 
@@ -549,30 +572,68 @@ def find_untagged_text_subs(streams: list[dict]) -> list[dict]:
     return results
 
 
+# ── Directory cache (avoids per-file network round-trips) ─────────────────────
+
+
+class DirCache:
+    """Cache of all filenames in a directory tree for fast sidecar lookups.
+
+    On a local disk this makes no difference.  Over a network/VPN it eliminates
+    thousands of individual ``Path.exists()`` stat calls — one ``rglob`` pass
+    replaces them all.
+    """
+
+    def __init__(self, root: Path):
+        self._files: set[Path] = set()
+        log.debug("[CACHE] Building directory cache for %s ...", root)
+        t0 = time.monotonic()
+        for p in root.rglob("*"):
+            # rglob yields dirs too — we only need files, but storing both
+            # is fine since we only test membership via exact paths.
+            self._files.add(p)
+        elapsed = time.monotonic() - t0
+        log.debug("[CACHE] Cached %d entries in %.1fs", len(self._files), elapsed)
+
+    def exists(self, path: Path) -> bool:
+        return path in self._files
+
+    def add(self, path: Path) -> None:
+        """Register a newly-created file so future lookups see it."""
+        self._files.add(path)
+
+    def remove(self, path: Path) -> None:
+        """Unregister a file that was deleted."""
+        self._files.discard(path)
+
+
 # ── Sidecar detection ─────────────────────────────────────────────────────────
 
 
-def find_target_sidecar(media_path: Path, target_codes: set[str]) -> Path | None:
+def find_target_sidecar(media_path: Path, target_codes: set[str],
+                        cache: DirCache | None = None) -> Path | None:
     """Check if a sidecar subtitle for the target language already exists."""
     stem = media_path.stem
     parent = media_path.parent
+    _exists = cache.exists if cache else lambda p: p.exists()
     for code in sorted(target_codes):
         for ext in (".srt", ".ass"):
             candidate = parent / f"{stem}.{code}{ext}"
-            if candidate.exists():
+            if _exists(candidate):
                 return candidate
     return None
 
 
-def find_sidecar(media_path: Path, lang_codes: set[str]) -> Path | None:
+def find_sidecar(media_path: Path, lang_codes: set[str],
+                 cache: DirCache | None = None) -> Path | None:
     """Find a sidecar subtitle for any of the given language codes."""
     stem = media_path.stem
     parent = media_path.parent
+    _exists = cache.exists if cache else lambda p: p.exists()
     # Prefer .srt over .ass
     for ext in (".srt", ".ass"):
         for code in sorted(lang_codes):
             candidate = parent / f"{stem}.{code}{ext}"
-            if candidate.exists():
+            if _exists(candidate):
                 return candidate
     return None
 
@@ -804,11 +865,12 @@ def translate_file(
 def _find_source_sidecar(
     media: Path,
     source_languages: list[dict],
+    cache: DirCache | None = None,
 ) -> tuple[str, Path] | None:
     """Try each source language in priority order, return (lang_name, sidecar_path) or None."""
     for lang in source_languages:
         codes = set(lang["codes"])
-        sidecar = find_sidecar(media, codes)
+        sidecar = find_sidecar(media, codes, cache=cache)
         if sidecar:
             return (lang["name"], sidecar)
     return None
@@ -836,76 +898,98 @@ def _find_source_embedded(
 TranslateJob = dict  # keys: media, rel, output, srt_source, temp_files, description, source_lang
 
 
-def _prepare_jobs(
+def _generate_jobs(
     folder: Path,
     dry_run: bool,
     force: bool,
     source_languages: list[dict],
     skip_detect: bool,
-    skip_clean: bool,
     profile: dict,
     target_lang: dict,
-) -> tuple[list[TranslateJob], dict]:
-    """Scan folder, resolve what needs translating.
+    stats: dict,
+    skipped_mkvs: list[Path],
+    cache: DirCache | None = None,
+) -> Generator[TranslateJob, None, None]:
+    """Scan folder, yield translation jobs one at a time as they're found.
 
-    Returns (jobs_to_translate, stats).
-    Stats counts skipped files; jobs still need translation.
-    For skipped MKVs, also runs a quick clean check if not skip_clean.
+    This is a generator — the caller can start translating the first job
+    while scanning continues in the background.  Cleaning of skipped MKVs
+    is deferred: their paths are collected in *skipped_mkvs* so the caller
+    can clean them after all translation work is done.
     """
-    stats = {"total": 0, "skipped": 0, "translated": 0, "errors": 0,
-             "cleaned": 0, "tracks_removed": 0, "clean_errors": 0}
-
     target_codes = target_lang["_codes_set"]
     sidecar_code = target_lang["sidecar_code"]
-    keep_languages = target_lang["_keep_languages"]
 
+    # Use cached listing when available for fast sidecar checks
+    log.info("Scanning %s ...", folder)
+    t0 = time.monotonic()
     video_files = sorted(
         f for f in folder.rglob("*")
-        if f.is_file() and f.suffix.lower() in VIDEO_EXTENSIONS
+        if f.suffix.lower() in VIDEO_EXTENSIONS
+        and not f.name.startswith(".tmp_")
     )
-    log.info("Found %d video files in %s", len(video_files), folder)
+    log.info("Found %d video files in %.1fs", len(video_files),
+             time.monotonic() - t0)
 
     # Build a set of all source language codes (for bitmap-only check message)
     all_source_codes: set[str] = set()
     for lang in source_languages:
         all_source_codes.update(lang["codes"])
 
-    jobs: list[TranslateJob] = []
-
-    def _skip_and_clean(media_path: Path, rel_path, reason: str) -> None:
-        """Log skip, clean the MKV if needed, increment skip counter."""
-        log.info("[SKIP] %s: %s", reason, rel_path)
+    def _skip(media_path: Path, rel_path, reason: str,
+              is_has_target: bool = False) -> None:
+        """Log skip, collect MKV for deferred cleaning, update stats."""
+        log.debug("[SKIP] %s: %s", reason, rel_path)
         stats["skipped"] += 1
-        if not skip_clean and not dry_run and media_path.suffix.lower() == ".mkv":
-            _clean_single_file(media_path, rel_path, stats, keep_languages)
+        if is_has_target:
+            stats["has_target"].append(str(rel_path))
+        if media_path.suffix.lower() == ".mkv":
+            skipped_mkvs.append(media_path)
 
     for media in video_files:
         stats["total"] += 1
         rel = media.relative_to(folder)
         output_path = media.parent / f"{media.stem}.{sidecar_code}.srt"
 
-        # ── Step 1: Output already exists? ────────────────────────────────
-        if output_path.exists() and output_path.stat().st_size > 0 and not force:
-            _skip_and_clean(media, rel, "Output exists")
-            continue
+        # ── Step 1: Output already exists? (cache lookup, no network) ─────
+        out_exists = cache.exists(output_path) if cache else output_path.exists()
+        if out_exists and not force:
+            # Verify file is non-empty (one stat call, acceptable)
+            try:
+                if output_path.stat().st_size > 0:
+                    _skip(media, rel, "Output exists", is_has_target=True)
+                    continue
+            except OSError:
+                pass  # file vanished between cache and stat — proceed
 
-        # ── Step 2: Target language sidecar? ─────────────────────────────
-        target_sidecar = find_target_sidecar(media, target_codes)
+        # ── Step 2: Target language sidecar? (cache lookup, no network) ───
+        target_sidecar = find_target_sidecar(media, target_codes, cache=cache)
         if target_sidecar:
             if force and target_sidecar == output_path:
                 pass  # fall through to find source
             else:
-                _skip_and_clean(media, rel, f"{target_lang['name']} sidecar")
+                _skip(media, rel, f"{target_lang['name']} sidecar",
+                      is_has_target=True)
                 continue
 
-        # ── Step 3: Target language embedded? ─────────────────────────────
+        # ── Step 3: Source sidecar? (cache lookup, no network) ────────────
+        # Remember it but don't yield yet — we still need to check for
+        # embedded target language (step 4) which requires ffprobe.
+        source_sidecar = _find_source_sidecar(media, source_languages,
+                                               cache=cache)
+
+        # ── Step 4: Probe embedded tracks (ffprobe — first network I/O) ──
+        # Only called if steps 1-2 didn't resolve. This is the expensive
+        # part over VPN, but unavoidable for embedded-only decisions.
         streams = run_ffprobe(media)
+
+        # Check for target language embedded
         if has_target_embedded(streams, target_codes):
-            _skip_and_clean(media, rel, f"{target_lang['name']} embedded")
+            _skip(media, rel, f"{target_lang['name']} embedded",
+                  is_has_target=True)
             continue
 
-        # ── Step 4: Sidecar in any source language? ───────────────────────
-        source_sidecar = _find_source_sidecar(media, source_languages)
+        # ── Step 4b: Source sidecar found earlier? Now safe to use it. ────
         if source_sidecar:
             source_lang_name, sidecar_path = source_sidecar
             srt_source = sidecar_path
@@ -919,7 +1003,7 @@ def _prepare_jobs(
                     continue
                 temp_srt = Path(tempfile.mktemp(suffix=".srt"))
                 temp_files.append(temp_srt)
-                log.info("[CONVERT] ASS→SRT: %s", sidecar_path.name)
+                log.info("[CONVERT] ASS->SRT: %s", sidecar_path.name)
                 if not convert_ass_to_srt(sidecar_path, temp_srt):
                     log.error("[ERROR] ASS conversion failed: %s", rel)
                     stats["errors"] += 1
@@ -932,12 +1016,12 @@ def _prepare_jobs(
                 stats["translated"] += 1
                 continue
 
-            jobs.append({
+            yield {
                 "media": media, "rel": rel, "output": output_path,
                 "srt_source": srt_source, "temp_files": temp_files,
                 "description": f"Sidecar {sidecar_path.name} ({source_lang_name})",
                 "source_lang": source_lang_name,
-            })
+            }
             continue
 
         # ── Step 5: Embedded track in any source language? ────────────────
@@ -955,24 +1039,25 @@ def _prepare_jobs(
                 continue
 
             temp_srt = Path(tempfile.mktemp(suffix=".srt"))
-            log.info("[EXTRACT] idx=%d (%s%s, %s) from %s",
+            log.debug("[EXTRACT] idx=%d (%s%s, %s) from %s",
                      stream_idx, codec, hi_note, source_lang_name, rel)
             if not extract_subtitle_track(media, stream_idx, temp_srt):
                 log.error("[ERROR] Extraction failed: %s", rel)
                 stats["errors"] += 1
                 continue
 
-            jobs.append({
+            yield {
                 "media": media, "rel": rel, "output": output_path,
                 "srt_source": temp_srt, "temp_files": [temp_srt],
                 "description": f"Embedded idx={stream_idx} ({codec}{hi_note}, {source_lang_name})",
                 "source_lang": source_lang_name,
-            })
+            }
             continue
 
         # ── Step 5b: Bitmap-only for any source language? ─────────────────
         if has_bitmap_only(streams, all_source_codes):
-            _skip_and_clean(media, rel, "Source language bitmap only (needs OCR)")
+            stats["no_subs"].append(str(rel))
+            _skip(media, rel, "Source language bitmap only (needs OCR)")
             continue
 
         # ── Step 6: Untagged text tracks — detect language ────────────────
@@ -983,20 +1068,26 @@ def _prepare_jobs(
                 track = untagged[0]
                 track_idx = track["index"]
                 codec = track.get("codec_name", "?")
-                log.info("[DETECT] idx=%d %s — detecting language...", track_idx, codec)
+                log.info("[DETECT] idx=%d %s -- detecting language...",
+                         track_idx, codec)
 
-                detected_code = _detect_track_language(media, track_idx, profile=profile)
+                detected_code = _detect_track_language(
+                    media, track_idx, profile=profile)
                 if detected_code:
                     # Tag the track with detected language in the MKV
                     if media.suffix.lower() == ".mkv":
-                        log.info("[TAG] idx=%d -> %s: %s", track_idx, detected_code, rel)
-                        if not _tag_track_language(media, track_idx, detected_code):
-                            log.warning("[TAG] Failed to tag idx=%d, continuing anyway: %s",
-                                        track_idx, rel)
+                        log.info("[TAG] idx=%d -> %s: %s",
+                                 track_idx, detected_code, rel)
+                        if not _tag_track_language(media, track_idx,
+                                                   detected_code):
+                            log.warning(
+                                "[TAG] Failed to tag idx=%d, continuing: %s",
+                                track_idx, rel)
 
                     # Is it the target language? Skip.
                     if detected_code in target_codes:
-                        _skip_and_clean(media, rel, f"Detected {target_lang['name']} (idx={track_idx})")
+                        _skip(media, rel,
+                              f"Detected {target_lang['name']} (idx={track_idx})")
                         continue
 
                     # Is it in our source language list?
@@ -1008,88 +1099,43 @@ def _prepare_jobs(
 
                     if matched_lang:
                         if dry_run:
-                            log.info("[DRY-RUN] Would extract idx=%d (detected %s) + translate: %s",
-                                     track_idx, matched_lang, rel)
+                            log.info(
+                                "[DRY-RUN] Would extract idx=%d "
+                                "(detected %s) + translate: %s",
+                                track_idx, matched_lang, rel)
                             stats["translated"] += 1
                             continue
 
                         temp_srt = Path(tempfile.mktemp(suffix=".srt"))
-                        log.info("[EXTRACT] idx=%d (detected %s) from %s",
+                        log.debug("[EXTRACT] idx=%d (detected %s) from %s",
                                  track_idx, matched_lang, rel)
-                        if not extract_subtitle_track(media, track_idx, temp_srt):
+                        if not extract_subtitle_track(media, track_idx,
+                                                      temp_srt):
                             log.error("[ERROR] Extraction failed: %s", rel)
                             stats["errors"] += 1
                             continue
 
-                        jobs.append({
+                        yield {
                             "media": media, "rel": rel, "output": output_path,
                             "srt_source": temp_srt, "temp_files": [temp_srt],
-                            "description": f"Embedded idx={track_idx} (detected {matched_lang})",
+                            "description": (
+                                f"Embedded idx={track_idx} "
+                                f"(detected {matched_lang})"),
                             "source_lang": matched_lang,
-                        })
+                        }
                         continue
                     else:
-                        _skip_and_clean(media, rel,
-                                        f"Detected '{detected_code}' (not in source list)")
+                        _skip(media, rel,
+                              f"Detected '{detected_code}' (not in source list)")
                         continue
                 else:
-                    _skip_and_clean(media, rel,
-                                    f"Language detection failed for idx={track_idx}")
+                    _skip(media, rel,
+                          f"Language detection failed for idx={track_idx}")
                     continue
 
         # ── Step 7: Nothing found ─────────────────────────────────────────
-        _skip_and_clean(media, rel, "No source subs found")
-
-    return jobs, stats
-
-
-# ── Per-file muxing ───────────────────────────────────────────────────────────
-
-# Lazy-loaded mux_subs functions (set once on first use)
-_mux_subs_available: bool | None = None
-_mux_single = None
-
-
-def _ensure_mux_subs_imported() -> bool:
-    """Try to import mux_subs.mux_single_file once. Returns True if available."""
-    global _mux_subs_available, _mux_single
-    if _mux_subs_available is not None:
-        return _mux_subs_available
-    try:
-        from mux_subs import mux_single_file
-        _mux_single = mux_single_file
-        _mux_subs_available = True
-    except ImportError:
-        log.warning("mux_subs.py not found — per-file muxing disabled")
-        _mux_subs_available = False
-    return _mux_subs_available
-
-
-def _mux_single_file(
-    media: Path, rel, keep_sidecar: bool, stats: dict,
-    sidecar_code: str = "no", mkv_tag: str = "nob", target_name: str = "Norwegian",
-) -> None:
-    """Mux the translated sidecar into the MKV. Thread-safe."""
-    if media.suffix.lower() != ".mkv":
-        return
-
-    if not _ensure_mux_subs_imported():
-        return
-
-    srt_path = media.parent / f"{media.stem}.{sidecar_code}.srt"
-    if not srt_path.exists():
-        return
-
-    log.info("[MUX] Muxing %s into %s", srt_path.name, media.name)
-    if _mux_single(media, srt_path, keep_sidecar=keep_sidecar,
-                    mkv_tag=mkv_tag, target_name=target_name):
-        log.info("[MUX OK] %s", rel)
-        with _stats_lock:
-            stats["muxed"] += 1
-    else:
-        log.error("[MUX ERROR] %s", rel)
-        with _stats_lock:
-            stats["mux_errors"] += 1
+        stats["no_subs"].append(str(rel))
+        _skip(media, rel, "No source subs found")
 
 
 # ── Per-file cleaning ─────────────────────────────────────────────────────────
@@ -1124,9 +1170,12 @@ def _ensure_clean_subs_imported() -> bool:
 
 def _clean_single_file(media: Path, rel, stats: dict,
                        keep_languages: set[str] | None = None) -> None:
-    """Clean unwanted subtitle tracks from a single MKV after translation.
+    """Clean unwanted tracks + mux wanted sidecars + delete all sidecars.
 
-    Thread-safe: each thread cleans its own file, no shared state.
+    Used for skipped files (already have Norwegian) that may still have
+    unwanted embedded tracks or redundant sidecar files.  Delegates to
+    _mux_and_clean_single_file which handles everything in one pass.
+    Thread-safe.
     """
     if media.suffix.lower() != ".mkv":
         return
@@ -1134,40 +1183,276 @@ def _clean_single_file(media: Path, rel, stats: dict,
     if not _ensure_clean_subs_imported():
         return
 
-    streams = _clean_ffprobe(media)
-    if not streams:
+    _mux_and_clean_single_file(
+        media, rel, keep_sidecar=False, skip_clean=False, stats=stats,
+        keep_languages=keep_languages,
+    )
+
+
+# Language tag → MKV metadata language code mapping
+_SIDECAR_MKV_TAGS = {
+    "no": "nor", "nb": "nob", "nob": "nob", "nor": "nor", "nno": "nno",
+    "en": "eng", "eng": "eng",
+    "da": "dan", "dan": "dan",
+    "sv": "swe", "swe": "swe",
+}
+
+# Sidecar file extensions to look for
+_SIDECAR_EXTENSIONS = (".srt", ".ass")
+
+
+def _find_all_sidecars(media: Path) -> list[Path]:
+    """Find ALL subtitle sidecar files next to a media file."""
+    stem = media.stem
+    parent = media.parent
+    sidecars = []
+    for f in parent.iterdir():
+        if not f.is_file():
+            continue
+        if f.suffix.lower() not in _SIDECAR_EXTENSIONS:
+            continue
+        # Match files like "Episode.en.srt", "Episode.no.srt", "Episode.srt"
+        if f.stem == stem or f.stem.startswith(stem + "."):
+            sidecars.append(f)
+    return sidecars
+
+
+def _sidecar_lang_code(sidecar: Path, media_stem: str) -> str:
+    """Extract the language code from a sidecar filename.
+
+    e.g. "Episode.en.srt" → "en", "Episode.srt" → ""
+    """
+    # Remove the subtitle extension to get e.g. "Episode.en"
+    name_no_ext = sidecar.stem
+    if name_no_ext == media_stem:
+        return ""  # no language code, e.g. "Episode.srt"
+    suffix = name_no_ext[len(media_stem):]  # e.g. ".en" or ".eng"
+    return suffix.lstrip(".").lower()
+
+
+def _mux_and_clean_single_file(
+    media: Path, rel, keep_sidecar: bool, skip_clean: bool,
+    stats: dict, sidecar_code: str = "no", mkv_tag: str = "nob",
+    target_name: str = "Norwegian", keep_languages: set[str] | None = None,
+) -> None:
+    """Mux + clean + delete sidecars in ONE remux pass.
+
+    Single ffmpeg call that:
+      1. Maps all video + audio streams from the original MKV
+      2. Maps only embedded subtitle tracks in kept languages (no/en/da/sv)
+      3. Muxes in any sidecar subtitles for kept languages that aren't
+         already embedded (Norwegian, English, Danish, Swedish)
+      4. Removes all unwanted embedded tracks (Spanish, French, etc.)
+      5. Writes one output file
+
+    After the remux, ALL sidecar subtitle files are deleted — they're either
+    now inside the MKV or unwanted.
+
+    This does everything in one read+write pass — critical for VPN/network
+    paths where each remux transfers the full multi-GB MKV.  Thread-safe.
+    """
+    if media.suffix.lower() != ".mkv":
         return
 
-    sub_streams = [s for s in streams if s.get("codec_type") == "subtitle"]
-    if not sub_streams:
-        return
+    langs_to_keep = keep_languages or set()
 
-    keep, remove = _classify_tracks(media, streams, skip_detect=True,
-                                     keep_languages=keep_languages)
-
-    if not remove:
-        log.info("[CLEAN] Nothing to remove: %s", rel)
-        return
-
-    keep_indices = [s["index"] for s in keep]
-    remove_langs = [(s.get("tags") or {}).get("language", "???") for s in remove]
-
-    log.info("[CLEAN] Removing %d track(s): %s — %s",
-             len(remove), ", ".join(remove_langs), rel)
-
-    original_size = media.stat().st_size
-    if _remux_without(media, keep_indices):
-        new_size = media.stat().st_size
-        saved_mb = (original_size - new_size) / (1024 * 1024)
-        log.info("[CLEAN OK] Removed %d track(s), saved %.1f MB: %s",
-                 len(remove), saved_mb, rel)
+    # ── Probe the MKV ─────────────────────────────────────────────────
+    try:
+        result = subprocess.run(
+            ["ffprobe", "-v", "error",
+             "-show_entries", "stream=index,codec_type,codec_name:stream_tags=language,title",
+             "-of", "json", str(media)],
+            capture_output=True, text=True, encoding="utf-8",
+            errors="replace", timeout=30,
+        )
+        if result.returncode != 0:
+            log.error("[MUX+CLEAN] ffprobe failed: %s", rel)
+            with _stats_lock:
+                stats["mux_errors"] += 1
+            return
+        streams = json.loads(result.stdout).get("streams", [])
+    except (subprocess.TimeoutExpired, json.JSONDecodeError) as e:
+        log.error("[MUX+CLEAN] ffprobe error: %s: %s", rel, e)
         with _stats_lock:
-            stats["cleaned"] += 1
-            stats["tracks_removed"] += len(remove)
+            stats["mux_errors"] += 1
+        return
+
+    # ── Classify embedded subtitle tracks ─────────────────────────────
+    tracks_removed = 0
+    if skip_clean or not _ensure_clean_subs_imported():
+        keep_sub_indices = [s["index"] for s in streams
+                           if s.get("codec_type") == "subtitle"]
     else:
-        log.error("[CLEAN ERROR] Remux failed: %s", rel)
+        keep, remove = _classify_tracks(media, streams, skip_detect=True,
+                                         keep_languages=langs_to_keep)
+        keep_sub_indices = [s["index"] for s in keep]
+        tracks_removed = len(remove)
+        if remove:
+            remove_langs = [(s.get("tags") or {}).get("language", "???")
+                           for s in remove]
+            log.debug("[MUX+CLEAN] Removing %d embedded track(s): %s",
+                      tracks_removed, ", ".join(remove_langs))
+
+    # Build set of languages already embedded (after cleaning)
+    embedded_langs: set[str] = set()
+    for s in streams:
+        if s.get("codec_type") != "subtitle":
+            continue
+        if s["index"] in keep_sub_indices:
+            lang = (s.get("tags") or {}).get("language", "").lower()
+            if lang:
+                embedded_langs.add(lang)
+
+    # ── Find sidecars to mux in ───────────────────────────────────────
+    all_sidecars = _find_all_sidecars(media)
+    sidecars_to_mux: list[tuple[Path, str, str]] = []  # (path, lang_code, mkv_tag)
+    sidecars_to_delete: list[Path] = []
+
+    for sc in all_sidecars:
+        lang = _sidecar_lang_code(sc, media.stem)
+
+        if not lang or lang not in langs_to_keep:
+            # Unknown or unwanted language — delete, don't mux
+            sidecars_to_delete.append(sc)
+            continue
+
+        # Wanted language — check if already embedded
+        # Check against both the sidecar code and known aliases
+        mkv_tag_for_lang = _SIDECAR_MKV_TAGS.get(lang, lang)
+        already_embedded = lang in embedded_langs or mkv_tag_for_lang in embedded_langs
+
+        if already_embedded:
+            # Already inside the MKV — just delete the redundant sidecar
+            sidecars_to_delete.append(sc)
+            log.debug("[MUX+CLEAN] Sidecar redundant (embedded): %s", sc.name)
+        else:
+            # Not embedded — mux it in
+            sidecars_to_mux.append((sc, lang, mkv_tag_for_lang))
+            sidecars_to_delete.append(sc)  # delete after muxing
+            embedded_langs.add(lang)  # prevent dupes if multiple sidecars
+            embedded_langs.add(mkv_tag_for_lang)
+            log.debug("[MUX+CLEAN] Will mux sidecar: %s (lang=%s)",
+                      sc.name, mkv_tag_for_lang)
+
+    # ── Check if any work is needed ───────────────────────────────────
+    if not sidecars_to_mux and tracks_removed == 0:
+        # Nothing to mux, nothing to clean — just delete unwanted sidecars
+        if sidecars_to_delete:
+            for sc in sidecars_to_delete:
+                if not keep_sidecar:
+                    sc.unlink(missing_ok=True)
+                    log.debug("[MUX+CLEAN] Deleted sidecar: %s", sc.name)
+            log.debug("[MUX+CLEAN] No remux needed, cleaned %d sidecar(s): %s",
+                      len(sidecars_to_delete), rel)
+        else:
+            log.debug("[MUX+CLEAN] Nothing to do: %s", rel)
+        return
+
+    # ── Build ffmpeg command ──────────────────────────────────────────
+    # Input 0: original MKV
+    # Inputs 1..N: sidecar files to mux in
+    input_args = ["-i", str(media)]
+    for sc_path, _, _ in sidecars_to_mux:
+        input_args.extend(["-i", str(sc_path)])
+
+    # Map: all video + audio from input 0
+    map_args = ["-map", "0:v", "-map", "0:a"]
+
+    # Map kept embedded subtitle tracks
+    for idx in sorted(keep_sub_indices):
+        map_args.extend(["-map", f"0:{idx}"])
+
+    # Map sidecar inputs (input 1, 2, 3, ...)
+    metadata_args = []
+    sub_track_idx = len(keep_sub_indices)
+    for i, (_, _, tag) in enumerate(sidecars_to_mux):
+        input_num = i + 1  # input 0 is the MKV
+        map_args.extend(["-map", f"{input_num}:0"])
+        metadata_args.extend([
+            f"-metadata:s:s:{sub_track_idx}", f"language={tag}",
+        ])
+        sub_track_idx += 1
+
+    tmp_fd, tmp_path = tempfile.mkstemp(suffix=".mkv", dir=media.parent,
+                                        prefix=".tmp_")
+    os.close(tmp_fd)
+    tmp_file = Path(tmp_path)
+
+    try:
+        cmd = [
+            "ffmpeg", "-y",
+            *input_args,
+            *map_args,
+            "-c", "copy",
+            *metadata_args,
+            str(tmp_file),
+        ]
+
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, encoding="utf-8",
+            errors="replace", timeout=600,
+        )
+
+        if result.returncode != 0:
+            log.error("[MUX+CLEAN] ffmpeg failed: %s",
+                      result.stderr[-200:] if result.stderr else "unknown")
+            tmp_file.unlink(missing_ok=True)
+            with _stats_lock:
+                stats["mux_errors"] += 1
+            return
+
+        if not tmp_file.exists() or tmp_file.stat().st_size == 0:
+            log.error("[MUX+CLEAN] ffmpeg produced empty output: %s", rel)
+            tmp_file.unlink(missing_ok=True)
+            with _stats_lock:
+                stats["mux_errors"] += 1
+            return
+
+        # Atomic swap: original → backup → swap → delete backup
+        original_size = media.stat().st_size
+        backup = media.with_suffix(".mkv.bak")
+        try:
+            media.rename(backup)
+            tmp_file.rename(media)
+            backup.unlink()
+        except Exception:
+            if backup.exists() and not media.exists():
+                backup.rename(media)
+            tmp_file.unlink(missing_ok=True)
+            raise
+
+        new_size = media.stat().st_size
+
+        # Delete all sidecars (muxed ones + redundant ones + unwanted ones)
+        if not keep_sidecar:
+            for sc in sidecars_to_delete:
+                sc.unlink(missing_ok=True)
+
         with _stats_lock:
-            stats["clean_errors"] += 1
+            stats["muxed"] += 1
+            if tracks_removed > 0:
+                stats["cleaned"] += 1
+                stats["tracks_removed"] += tracks_removed
+
+        # Summary log
+        parts = []
+        if sidecars_to_mux:
+            muxed_names = [sc.name for sc, _, _ in sidecars_to_mux]
+            parts.append(f"muxed {', '.join(muxed_names)}")
+        if tracks_removed > 0:
+            parts.append(f"removed {tracks_removed} track(s)")
+        if sidecars_to_delete and not keep_sidecar:
+            parts.append(f"deleted {len(sidecars_to_delete)} sidecar(s)")
+        saved_mb = (original_size - new_size) / (1024 * 1024)
+        if saved_mb > 0.1:
+            parts.append(f"saved {saved_mb:.1f} MB")
+        log.info("[MUX+CLEAN OK] %s -- %s", rel, ", ".join(parts))
+
+    except Exception as e:
+        log.error("[MUX+CLEAN ERROR] %s: %s", rel, e)
+        tmp_file.unlink(missing_ok=True)
+        with _stats_lock:
+            stats["mux_errors"] += 1
 
 
 
@@ -1208,6 +1493,7 @@ def _translate_one(
             log.info("[OK] %s", rel)
             with _stats_lock:
                 stats["translated"] += 1
+                stats["translated_files"].append(str(rel))
             translated_ok = True
         else:
             log.error("[ERROR] No output: %s", rel)
@@ -1224,25 +1510,18 @@ def _translate_one(
             if tmp.exists():
                 tmp.unlink()
 
-    # Mux the sidecar into the MKV (before clean, so target track is embedded)
+    # Mux sidecar into MKV + clean unwanted tracks in one remux pass
     if translated_ok and media.suffix.lower() == ".mkv":
         try:
-            _mux_single_file(media, rel, keep_sidecar, stats,
-                             sidecar_code=sidecar_code, mkv_tag=mkv_tag,
-                             target_name=target_name)
+            _mux_and_clean_single_file(
+                media, rel, keep_sidecar, skip_clean, stats,
+                sidecar_code=sidecar_code, mkv_tag=mkv_tag,
+                target_name=target_name, keep_languages=keep_languages,
+            )
         except Exception as e:
-            log.error("[MUX ERROR] %s: %s", rel, e)
+            log.error("[MUX+CLEAN ERROR] %s: %s", rel, e)
             with _stats_lock:
                 stats["mux_errors"] += 1
-
-    # Clean the MKV (after mux, so target language is kept)
-    if translated_ok and not skip_clean:
-        try:
-            _clean_single_file(media, rel, stats, keep_languages)
-        except Exception as e:
-            log.error("[CLEAN ERROR] %s: %s", rel, e)
-            with _stats_lock:
-                stats["clean_errors"] += 1
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1264,7 +1543,13 @@ def scan_and_translate(
     profile: dict | None = None,
     target_lang: dict | None = None,
 ) -> dict:
-    """Scan folder and translate subtitles, optionally in parallel."""
+    """Scan folder and translate subtitles using a streaming pipeline.
+
+    Instead of scanning everything first, this uses a producer–consumer
+    pattern: the scanner yields jobs as soon as they're found, and
+    translation workers start immediately.  Over network/VPN paths this
+    can cut the perceived startup time from minutes to seconds.
+    """
     if source_languages is None:
         source_languages = [{"codes": ["en", "eng"], "name": "English"}]
     if profile is None:
@@ -1272,43 +1557,82 @@ def scan_and_translate(
     if target_lang is None:
         target_lang = get_target_language({})
 
-    jobs, stats = _prepare_jobs(
+    keep_languages = target_lang["_keep_languages"]
+
+    stats = {"total": 0, "skipped": 0, "translated": 0, "errors": 0,
+             "cleaned": 0, "tracks_removed": 0, "clean_errors": 0,
+             "muxed": 0, "mux_errors": 0,
+             "no_subs": [], "translated_files": [], "has_target": []}
+
+    # Build directory cache once — replaces thousands of exists() calls
+    cache = DirCache(folder)
+
+    # Skipped MKVs are collected for deferred cleaning (after translation)
+    skipped_mkvs: list[Path] = []
+
+    job_gen = _generate_jobs(
         folder, dry_run, force=force,
         source_languages=source_languages,
         skip_detect=skip_detect,
-        skip_clean=skip_clean,
         profile=profile,
         target_lang=target_lang,
+        stats=stats,
+        skipped_mkvs=skipped_mkvs,
+        cache=cache,
     )
 
-    # Add mux stats counters (clean stats already initialized by _prepare_jobs)
-    stats["muxed"] = 0
-    stats["mux_errors"] = 0
-
-    if not jobs or dry_run:
+    if dry_run:
+        # Just exhaust the generator to collect stats
+        for _ in job_gen:
+            pass
         return stats
 
-    if limit > 0 and len(jobs) > limit:
-        log.info("Limiting to %d of %d files", limit, len(jobs))
-        jobs = jobs[:limit]
+    # ── Streaming pipeline: scan + translate concurrently ─────────────
+    submitted = 0
+    futures: dict = {}
 
-    log.info("Translating %d files (parallel=%d, batch_size=%d)", len(jobs), parallel, batch_size)
+    with ThreadPoolExecutor(max_workers=max(1, parallel)) as pool:
+        for job in job_gen:
+            if limit > 0 and submitted >= limit:
+                log.info("Limit reached (%d files), stopping scan", limit)
+                break
 
-    if parallel <= 1:
-        for job in jobs:
-            _translate_one(job, batch_size, stats, profile,
-                           skip_clean=skip_clean, keep_sidecar=keep_sidecar,
-                           target_lang=target_lang)
-    else:
-        with ThreadPoolExecutor(max_workers=parallel) as pool:
-            futures = {
-                pool.submit(_translate_one, job, batch_size, stats, profile,
-                            skip_clean=skip_clean, keep_sidecar=keep_sidecar,
-                            target_lang=target_lang): job
-                for job in jobs
-            }
-            for future in as_completed(futures):
-                future.result()
+            future = pool.submit(
+                _translate_one, job, batch_size, stats, profile,
+                skip_clean=skip_clean, keep_sidecar=keep_sidecar,
+                target_lang=target_lang,
+            )
+            futures[future] = job
+            submitted += 1
+
+            # Log that translation started while scan continues
+            if submitted == 1:
+                log.info("First job submitted, translation started "
+                         "(scan continues in background)")
+
+            # Harvest completed futures without blocking
+            done_futures = [f for f in futures if f.done()]
+            for f in done_futures:
+                f.result()  # propagate exceptions
+                del futures[f]
+
+        # Wait for remaining translations to finish
+        for future in as_completed(futures):
+            future.result()
+
+    if submitted > 0:
+        log.info("All %d translation(s) complete", submitted)
+
+    # ── Deferred cleaning of skipped MKVs ─────────────────────────────
+    if not skip_clean and skipped_mkvs:
+        log.info("Cleaning %d skipped MKV(s) ...", len(skipped_mkvs))
+        for media in skipped_mkvs:
+            try:
+                rel = media.relative_to(folder)
+                _clean_single_file(media, rel, stats, keep_languages)
+            except Exception as e:
+                log.error("[CLEAN ERROR] %s: %s", media.name, e)
+                stats["clean_errors"] += 1
 
     return stats
 
@@ -1430,8 +1754,53 @@ def main():
         log.info("  Tracks removed: %d", stats.get("tracks_removed", 0))
         if stats.get("clean_errors", 0) > 0:
             log.info("  Clean errors:   %d", stats["clean_errors"])
+    has_target = stats.get("has_target", [])
+    if has_target:
+        log.info("  Already done:   %d files (Norwegian found)", len(has_target))
+    no_subs = stats.get("no_subs", [])
+    if no_subs:
+        log.info("  No subs found:  %d files (see report log)", len(no_subs))
     log.info("  Time:           %.1fs", elapsed)
     log.info("=" * 60)
+
+    # Write report log to the script's directory
+    folder_name = folder.name or folder.parts[-1] if folder.parts else "unknown"
+    safe_name = "".join(c if c.isalnum() or c in " ._-()" else "_" for c in folder_name)
+    logs_dir = Path(__file__).parent / "logs"
+    logs_dir.mkdir(exist_ok=True)
+    report_path = logs_dir / f"{safe_name}.log"
+    with open(report_path, "w", encoding="utf-8") as rpt:
+        rpt.write(f"Translate Subs Report: {folder}\n")
+        rpt.write(f"Date: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+        rpt.write(f"{'=' * 60}\n\n")
+
+        if has_target:
+            rpt.write(f"ALREADY HAS NORWEGIAN ({len(has_target)} files):\n")
+            for f in sorted(has_target):
+                rpt.write(f"  {f}\n")
+            rpt.write("\n")
+
+        translated_files = stats.get("translated_files", [])
+        if translated_files:
+            rpt.write(f"TRANSLATED ({len(translated_files)} files):\n")
+            for f in sorted(translated_files):
+                rpt.write(f"  {f}\n")
+            rpt.write("\n")
+
+        if no_subs:
+            rpt.write(f"NO ELIGIBLE SUBTITLES ({len(no_subs)} files):\n")
+            rpt.write("  These files need subtitles acquired manually.\n")
+            for f in sorted(no_subs):
+                rpt.write(f"  {f}\n")
+            rpt.write("\n")
+
+        rpt.write(f"SUMMARY:\n")
+        rpt.write(f"  Total: {stats['total']} | Already done: {len(has_target)}")
+        rpt.write(f" | Translated: {stats['translated']} | No subs: {len(no_subs)}")
+        rpt.write(f" | Errors: {stats['errors']}\n")
+        rpt.write(f"  Time: {elapsed:.1f}s\n")
+
+    log.info("Report saved: %s", report_path)
 
 
 if __name__ == "__main__":

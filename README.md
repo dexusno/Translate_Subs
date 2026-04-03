@@ -26,15 +26,15 @@ Works with TV series, movies, documentaries, or any media library. Supports mult
 
 ## Quick Start
 
-### One-liner Install (Windows PowerShell)
+### Windows (PowerShell)
+
+**One-liner install:**
 
 ```powershell
 irm https://raw.githubusercontent.com/dexusno/Translate_Subs/main/install.ps1 | iex
 ```
 
-This will clone the repo, install Python packages, and set up your `.env` file.
-
-### Manual Install
+**Manual install:**
 
 ```powershell
 git clone https://github.com/dexusno/Translate_Subs.git
@@ -44,10 +44,36 @@ cp .env.example .env
 # Edit .env and add your API key
 ```
 
-### Verify
+**Verify:**
 
 ```powershell
 .\translate_subs.ps1 "D:\Media\Some Folder" -DryRun
+```
+
+### Linux (Debian/Ubuntu)
+
+**One-liner install:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/dexusno/Translate_Subs/main/linux/install.sh | bash
+```
+
+**Manual install:**
+
+```bash
+sudo apt-get install python3 python3-pip python3-venv ffmpeg mkvtoolnix git
+git clone https://github.com/dexusno/Translate_Subs.git
+cd Translate_Subs
+python3 -m venv .venv
+.venv/bin/pip install requests python-dotenv
+cp .env.example .env
+# Edit .env and add your API key
+```
+
+**Verify:**
+
+```bash
+./linux/translate_subs.sh "/media/tv/Some Show" --dry-run
 ```
 
 ## Configuration
@@ -169,13 +195,15 @@ Each profile can include `batch_size`, `parallel`, and `timeout` to tune perform
 | `parallel` | Concurrent files being translated | 3 | 1 |
 | `timeout` | Seconds before API call times out | 120 | 600 |
 
-CLI flags (`-BatchSize`, `-Parallel`) override profile settings when specified.
+CLI flags (`--batch-size`, `--parallel`) override profile settings when specified.
 
 ## Usage
 
 ### Translate a folder
 
 Point the script at any folder containing video files. It scans recursively, so you can target a single movie folder, a TV series, or an entire library root.
+
+**Windows (PowerShell):**
 
 ```powershell
 # Translate a movie folder
@@ -184,61 +212,94 @@ Point the script at any folder containing video files. It scans recursively, so 
 # Translate a TV series (all seasons)
 .\translate_subs.ps1 "D:\TvSeries\Breaking Bad"
 
-# Translate an entire library
-.\translate_subs.ps1 "D:\Media"
-
 # Use a different LLM provider
 .\translate_subs.ps1 "D:\Movies" -Profile openai
 
 # Preview what would be translated
 .\translate_subs.ps1 "D:\Media\Documentaries" -DryRun
 
-# Limit to 5 files (useful for testing)
-.\translate_subs.ps1 "D:\Movies" -Limit 5
+# Limit to 5 files, retranslate existing, keep sidecars
+.\translate_subs.ps1 "D:\Movies" -Limit 5 -Force -KeepSidecar
 
-# Retranslate files that already have target subs
-.\translate_subs.ps1 "D:\TvSeries\Show" -Force
-
-# Keep sidecar files after muxing (for spot-checking translations)
-.\translate_subs.ps1 "D:\Movies\Film" -KeepSidecar
-
-# Skip cleaning unwanted subtitle tracks
-.\translate_subs.ps1 "D:\TvSeries\Show" -SkipClean
-
-# Write log output to a file
-.\translate_subs.ps1 "D:\Media" -LogFile "C:\logs\translate.log"
-
-# UNC paths (network shares) are supported
+# UNC paths (network shares)
 .\translate_subs.ps1 "\\nas\media\Movies"
+```
+
+**Linux (Bash):**
+
+```bash
+# Translate a movie folder
+./linux/translate_subs.sh "/media/movies/Inception (2010)"
+
+# Translate a TV series (all seasons)
+./linux/translate_subs.sh "/media/tv/Breaking Bad"
+
+# Use a different LLM provider
+./linux/translate_subs.sh "/media/movies" --profile openai
+
+# Preview what would be translated
+./linux/translate_subs.sh "/media/documentaries" --dry-run
+
+# Limit to 5 files, retranslate existing, keep sidecars
+./linux/translate_subs.sh "/media/movies" --limit 5 --force --keep-sidecar
+
+# NFS/SMB mounted shares work normally
+./linux/translate_subs.sh "/mnt/nas/movies"
 ```
 
 ### Mux existing sidecar files into MKVs
 
-For folders that already have translated sidecar files from a previous run:
-
 ```powershell
+# Windows
 .\mux_subs.ps1 "D:\Movies\Inception (2010)"
-.\mux_subs.ps1 "D:\TvSeries\Show" -KeepSidecar
-.\mux_subs.ps1 "D:\Media" -DryRun
+.\mux_subs.ps1 "D:\TvSeries\Show" -KeepSidecar -DryRun
+```
+
+```bash
+# Linux
+./linux/mux_subs.sh "/media/movies/Inception (2010)"
+./linux/mux_subs.sh "/media/tv/Show" --keep-sidecar --dry-run
 ```
 
 ### Clean unwanted subtitle tracks
 
-Remove subtitle tracks that aren't in the keep list:
-
 ```powershell
+# Windows
 .\clean_subs.ps1 "D:\Movies"
 .\clean_subs.ps1 "D:\TvSeries\Show" -DryRun
 ```
 
+```bash
+# Linux
+./linux/clean_subs.sh "/media/movies"
+./linux/clean_subs.sh "/media/tv/Show" --dry-run
+```
+
+### Sync video files between folders
+
+```powershell
+# Windows
+.\sync-folder.ps1 "D:\TvSeries\Show" "\\nas\media\Tv\Show"
+.\sync-folder.ps1 "D:\TvSeries\Show" "Z:\Tv\Show" -DryRun
+```
+
+```bash
+# Linux
+./linux/sync-folder.sh "/local/tv/Show" "/mnt/nas/tv/Show"
+./linux/sync-folder.sh "/local/tv/Show" "/mnt/nas/tv/Show" --dry-run
+```
+
 ## Scripts
 
-| Script | Purpose |
-|--------|---------|
-| `translate_subs.ps1` / `.py` | Main script — translate, mux, and clean in one pass |
-| `mux_subs.ps1` / `.py` | Mux sidecar subtitles into MKV containers |
-| `clean_subs.ps1` / `.py` | Remove unwanted subtitle tracks from MKVs |
-| `test_deepseek.py` | Standalone test for the translation API |
+| Script | Linux | Purpose |
+|--------|-------|---------|
+| `translate_subs.ps1` / `.py` | `linux/translate_subs.sh` | Main script — translate, mux, and clean in one pass |
+| `mux_subs.ps1` / `.py` | `linux/mux_subs.sh` | Mux sidecar subtitles into MKV containers |
+| `clean_subs.ps1` / `.py` | `linux/clean_subs.sh` | Remove unwanted subtitle tracks from MKVs |
+| `sync-folder.ps1` | `linux/sync-folder.sh` | Sync video files between local and remote folders |
+| `start-llama-server.ps1` | `linux/start-llama-server.sh` | Start local llama.cpp server for offline translation |
+| `install.ps1` | `linux/install.sh` | Install dependencies and configure the project |
+| `test_deepseek.py` | — | Standalone test for the translation API |
 
 ## How It Works
 
@@ -283,8 +344,22 @@ Media/
 ### ffmpeg not found
 
 Install ffmpeg and ensure both `ffmpeg` and `ffprobe` are on your PATH:
-- **Windows**: Download from [gyan.dev](https://www.gyan.dev/ffmpeg/builds/) or install with `winget install ffmpeg`
-- **Linux**: `sudo apt install ffmpeg`
+- **Windows**: Download from [gyan.dev](https://www.gyan.dev/ffmpeg/builds/) or `winget install ffmpeg`
+- **Debian/Ubuntu**: `sudo apt-get install ffmpeg`
+
+### Python packages not found (Linux)
+
+The Linux scripts use a virtual environment at `.venv/`. If you see import errors, re-run the install:
+
+```bash
+./linux/install.sh
+```
+
+Or manually install into the venv:
+
+```bash
+.venv/bin/pip install requests python-dotenv
+```
 
 ### API timeout
 

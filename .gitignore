@@ -5,6 +5,7 @@
 __pycache__/
 *.pyc
 *.pyo
+.venv/
 
 # Temp files from ffmpeg remux
 .tmp_*.mkv
@@ -21,6 +22,9 @@ Desktop.ini
 
 # Models (GGUF files are multi-GB)
 models/
+
+# llama-server binaries
+llama-server/
 
 # Logs
 *.log
