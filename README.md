@@ -12,7 +12,7 @@ Works with TV series, movies, documentaries — any media library, any folder st
 - **Fully configurable** — choose your target language, source languages, which languages to keep, and which LLM provider to use. Everything is in one config file.
 - **Hands-off batch processing** — point it at a folder and walk away. It finds subtitles (embedded or external `.srt`/`.ass` files), translates, embeds into MKV, and cleans up unwanted tracks. Re-running is safe — already translated files are skipped.
 - **Fast** — streaming pipeline starts translating as soon as the first file is found. Translates up to 8 files in parallel. Directory caching eliminates slow lookups over network shares.
-- **Flexible source detection** — finds subtitles in external files (`.srt`, `.ass`, including `.sdh`, `.hi`, `.forced` variants), embedded MKV tracks, and even untagged tracks (identified via LLM).
+- **Flexible source detection** — finds subtitles in external files (`.srt`, `.ass`, including `.sdh`, `.hi`, `.forced` variants), embedded MKV tracks, and even untagged tracks (identified via LLM). If no preferred language is available, falls back to any language it can find — the LLM handles the rest.
 - **Smart MKV handling** — translating, embedding, and cleaning happen in a single remux pass. One read, one write — half the I/O compared to doing them separately.
 - **Multiple LLM providers** — DeepSeek, OpenAI, Groq, Mistral, OpenRouter, Ollama, LM Studio. Any OpenAI-compatible API works.
 - **Cross-platform** — PowerShell wrappers for Windows, Bash wrappers for Linux. Same Python core on both.
@@ -289,10 +289,11 @@ Copy video files between local and remote folders. Compares modification dates �
 For each video file:
 
 1. **Skip if done** — if the target language already exists (embedded or as an external file), the file is skipped.
-2. **Find source subtitles** — checks external files first (`.srt`, `.ass`, including `.sdh`/`.hi`/`.forced` variants), then embedded tracks, in language priority order.
+2. **Find source subtitles** — checks external files first (`.srt`, `.ass`, including `.sdh`/`.hi`/`.forced` variants), then embedded tracks. Languages from the `source_languages` priority list are preferred.
 3. **Detect untagged tracks** — if an embedded subtitle track has no language tag, a small sample is extracted and sent to the LLM for identification. The track is then tagged in the MKV.
-4. **Translate** — the subtitle text is sent to the LLM in batches. The response is reassembled into a properly formatted `.srt` file.
-5. **Embed + clean** — in a single remux pass: the translated subs are embedded, any wanted-language external files are embedded, unwanted tracks are removed, and external subtitle files are cleaned up.
+4. **Fallback** — if no subtitle in the priority list is found, the script falls back to any available subtitle in any language — embedded tracks, external files, anything it can read. The LLM can translate from virtually any language, so even a Romanian or Polish subtitle is better than nothing. Fallback usage is logged as `[FALLBACK]` for easy review.
+5. **Translate** — the subtitle text is sent to the LLM in batches. The response is reassembled into a properly formatted `.srt` file.
+6. **Embed + clean** — in a single remux pass: the translated subs are embedded, any wanted-language external files are embedded, unwanted tracks are removed, and external subtitle files are cleaned up.
 
 For non-MKV files, a `.srt` file is created next to the video. Most players (Plex, Jellyfin, VLC, Kodi) pick these up automatically.
 
