@@ -1,6 +1,6 @@
 # Translate Subs
 
-Translate subtitles for your entire media library using the power of large language models. Point it at a folder and it handles everything — detecting existing subtitles in your files (embedded or sidecar), translating them to your language, embedding the result into your MKV files, and cleaning up tracks you don't need.
+Translate subtitles for your entire media library using the power of large language models. Point it at a folder and it handles everything — detecting existing subtitles in your files (embedded or external `.srt`/`.ass` files), translating them to your language, embedding the result into your MKV files, and cleaning up tracks you don't need.
 
 Unlike traditional subtitle translation tools that do word-for-word replacement, Translate Subs uses LLMs that understand context, idioms, slang, and cultural references. The result is subtitles that read naturally — like they were written by a native speaker, not run through a machine translator.
 
@@ -10,10 +10,10 @@ Works with TV series, movies, documentaries — any media library, any folder st
 
 - **Natural translations** — LLMs understand context, tone, and intent. Jokes land, slang makes sense, and dialogue flows naturally.
 - **Fully configurable** — choose your target language, source languages, which languages to keep, and which LLM provider to use. Everything is in one config file.
-- **Hands-off batch processing** — point it at a folder and walk away. It finds subtitles (embedded or sidecar), translates, muxes into MKV, and cleans up unwanted tracks. Re-running is safe — already translated files are skipped.
+- **Hands-off batch processing** — point it at a folder and walk away. It finds subtitles (embedded or external `.srt`/`.ass` files), translates, embeds into MKV, and cleans up unwanted tracks. Re-running is safe — already translated files are skipped.
 - **Fast** — streaming pipeline starts translating as soon as the first file is found. Translates up to 8 files in parallel. Directory caching eliminates slow lookups over network shares.
-- **Flexible source detection** — finds subtitles in sidecar files (`.srt`, `.ass`, including `.sdh`, `.hi`, `.forced` variants), embedded MKV tracks, and even untagged tracks (identified via LLM).
-- **Smart MKV handling** — translating, muxing, and cleaning happen in a single remux pass. One read, one write — half the I/O compared to doing them separately.
+- **Flexible source detection** — finds subtitles in external files (`.srt`, `.ass`, including `.sdh`, `.hi`, `.forced` variants), embedded MKV tracks, and even untagged tracks (identified via LLM).
+- **Smart MKV handling** — translating, embedding, and cleaning happen in a single remux pass. One read, one write — half the I/O compared to doing them separately.
 - **Multiple LLM providers** — DeepSeek, OpenAI, Groq, Mistral, OpenRouter, Ollama, LM Studio. Any OpenAI-compatible API works.
 - **Cross-platform** — PowerShell wrappers for Windows, Bash wrappers for Linux. Same Python core on both.
 
@@ -94,7 +94,7 @@ The `target_language` block defines what you're translating **to** and which oth
 This setting affects two things:
 
 - **Embedded subtitle tracks** — tracks tagged with a `keep_with` language stay in the MKV. Tracks in any other language are removed during the clean step.
-- **Sidecar files** — if a sidecar file exists for a `keep_with` language and that language isn't already embedded, it gets muxed into the MKV automatically. After processing, all recognized sidecars are cleaned up.
+- **External subtitle files** — if an external `.srt` or `.ass` file exists for a `keep_with` language and that language isn't already embedded, it gets embedded into the MKV automatically. After processing, all recognized external subtitle files are cleaned up.
 
 After processing, each MKV will contain only your target language and the languages listed in `keep_with`. Everything else is stripped out.
 
@@ -236,9 +236,9 @@ Point the script at any folder. It scans recursively, so you can target a single
 ./linux/translate_subs.sh "/mnt/nas/movies"
 ```
 
-### Mux sidecars into MKVs
+### Embed external subtitles into MKVs
 
-Embed existing sidecar files into MKV containers:
+Embed existing external `.srt` files into MKV containers as embedded tracks:
 
 ```powershell
 .\mux_subs.ps1 "D:\TvSeries\Show"                          # Windows
@@ -275,8 +275,8 @@ Copy video files between local and remote folders. Compares modification dates �
 
 | Script | Linux | Purpose |
 |--------|-------|---------|
-| `translate_subs.ps1` / `.py` | `linux/translate_subs.sh` | Translate, mux, and clean in one pass |
-| `mux_subs.ps1` / `.py` | `linux/mux_subs.sh` | Mux sidecar subtitles into MKV containers |
+| `translate_subs.ps1` / `.py` | `linux/translate_subs.sh` | Translate, embed, and clean in one pass |
+| `mux_subs.ps1` / `.py` | `linux/mux_subs.sh` | Embed external subtitle files into MKV containers |
 | `clean_subs.ps1` / `.py` | `linux/clean_subs.sh` | Remove unwanted subtitle tracks from MKVs |
 | `sync-folder.ps1` | `linux/sync-folder.sh` | Sync video files between folders |
 | `start-llama-server.ps1` | `linux/start-llama-server.sh` | Start llama.cpp server for local translation |
@@ -288,13 +288,13 @@ Copy video files between local and remote folders. Compares modification dates �
 
 For each video file:
 
-1. **Skip if done** — if the target language already exists (embedded or sidecar), the file is skipped.
-2. **Find source subtitles** — checks sidecar files first (`.srt`, `.ass`, including `.sdh`/`.hi`/`.forced` variants), then embedded tracks, in language priority order.
+1. **Skip if done** — if the target language already exists (embedded or as an external file), the file is skipped.
+2. **Find source subtitles** — checks external files first (`.srt`, `.ass`, including `.sdh`/`.hi`/`.forced` variants), then embedded tracks, in language priority order.
 3. **Detect untagged tracks** — if an embedded subtitle track has no language tag, a small sample is extracted and sent to the LLM for identification. The track is then tagged in the MKV.
 4. **Translate** — the subtitle text is sent to the LLM in batches. The response is reassembled into a properly formatted `.srt` file.
-5. **Mux + clean** — in a single remux pass: the translated subs are embedded, any wanted-language sidecars are muxed in, unwanted tracks are removed, and sidecar files are cleaned up.
+5. **Embed + clean** — in a single remux pass: the translated subs are embedded, any wanted-language external files are embedded, unwanted tracks are removed, and external subtitle files are cleaned up.
 
-For non-MKV files, a sidecar `.srt` file is created next to the video. Most players (Plex, Jellyfin, VLC, Kodi) pick these up automatically.
+For non-MKV files, a `.srt` file is created next to the video. Most players (Plex, Jellyfin, VLC, Kodi) pick these up automatically.
 
 Translation starts as soon as the first file is ready — the scanning and translating phases overlap, so you don't wait for the entire library to be scanned before work begins.
 
