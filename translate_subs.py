@@ -1197,6 +1197,14 @@ _SIDECAR_MKV_TAGS = {
     "sv": "swe", "swe": "swe",
 }
 
+# MKV language tag → clean display title
+_LANG_TITLES = {
+    "nor": "Norwegian", "nob": "Norwegian", "nno": "Norwegian",
+    "eng": "English",
+    "dan": "Danish",
+    "swe": "Swedish",
+}
+
 # Sidecar file extensions to look for
 _SIDECAR_EXTENSIONS = (".srt", ".ass")
 
@@ -1378,7 +1386,7 @@ def _mux_and_clean_single_file(
     # Map: all video + audio from input 0
     map_args = ["-map", "0:v", "-map", "0:a"]
 
-    # Map kept embedded subtitle tracks + retag nob → nor
+    # Map kept embedded subtitle tracks + retag nob → nor + fix titles
     metadata_args = []
     sub_track_idx = 0
     for idx in sorted(keep_sub_indices):
@@ -1386,18 +1394,22 @@ def _mux_and_clean_single_file(
         # Check if this track needs retagging
         for stream_idx, _ in nob_retag_indices:
             if stream_idx == idx:
+                title = _LANG_TITLES.get("nor", target_name)
                 metadata_args.extend([
                     f"-metadata:s:s:{sub_track_idx}", "language=nor",
+                    f"-metadata:s:s:{sub_track_idx}", f"title={title}",
                 ])
                 break
         sub_track_idx += 1
 
-    # Map sidecar inputs (input 1, 2, 3, ...)
+    # Map sidecar inputs (input 1, 2, 3, ...) with language + title
     for i, (_, _, tag) in enumerate(sidecars_to_mux):
         input_num = i + 1  # input 0 is the MKV
         map_args.extend(["-map", f"{input_num}:0"])
+        title = _LANG_TITLES.get(tag, target_name)
         metadata_args.extend([
             f"-metadata:s:s:{sub_track_idx}", f"language={tag}",
+            f"-metadata:s:s:{sub_track_idx}", f"title={title}",
         ])
         sub_track_idx += 1
 
