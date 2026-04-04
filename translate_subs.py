@@ -608,6 +608,10 @@ class DirCache:
 
 # ── Sidecar detection ─────────────────────────────────────────────────────────
 
+# Subtitle flag suffixes that appear between the language code and extension.
+# e.g. "Episode.en.sdh.srt", "Episode.en.hi.srt", "Episode.en.forced.srt"
+_SIDECAR_FLAG_SUFFIXES = ("", ".sdh", ".hi", ".cc", ".forced")
+
 
 def find_target_sidecar(media_path: Path, target_codes: set[str],
                         cache: DirCache | None = None) -> Path | None:
@@ -616,10 +620,11 @@ def find_target_sidecar(media_path: Path, target_codes: set[str],
     parent = media_path.parent
     _exists = cache.exists if cache else lambda p: p.exists()
     for code in sorted(target_codes):
-        for ext in (".srt", ".ass"):
-            candidate = parent / f"{stem}.{code}{ext}"
-            if _exists(candidate):
-                return candidate
+        for flag in _SIDECAR_FLAG_SUFFIXES:
+            for ext in (".srt", ".ass"):
+                candidate = parent / f"{stem}.{code}{flag}{ext}"
+                if _exists(candidate):
+                    return candidate
     return None
 
 
@@ -629,12 +634,13 @@ def find_sidecar(media_path: Path, lang_codes: set[str],
     stem = media_path.stem
     parent = media_path.parent
     _exists = cache.exists if cache else lambda p: p.exists()
-    # Prefer .srt over .ass
+    # Prefer .srt over .ass, prefer plain over flagged
     for ext in (".srt", ".ass"):
         for code in sorted(lang_codes):
-            candidate = parent / f"{stem}.{code}{ext}"
-            if _exists(candidate):
-                return candidate
+            for flag in _SIDECAR_FLAG_SUFFIXES:
+                candidate = parent / f"{stem}.{code}{flag}{ext}"
+                if _exists(candidate):
+                    return candidate
     return None
 
 
@@ -1228,14 +1234,23 @@ def _find_all_sidecars(media: Path) -> list[Path]:
 def _sidecar_lang_code(sidecar: Path, media_stem: str) -> str:
     """Extract the language code from a sidecar filename.
 
-    e.g. "Episode.en.srt" → "en", "Episode.srt" → ""
+    Handles plain and flagged sidecars:
+      "Episode.en.srt"      → "en"
+      "Episode.en.sdh.srt"  → "en"
+      "Episode.en.hi.srt"   → "en"
+      "Episode.eng.forced.srt" → "eng"
+      "Episode.srt"         → ""
     """
-    # Remove the subtitle extension to get e.g. "Episode.en"
+    # Remove the subtitle extension to get e.g. "Episode.en" or "Episode.en.sdh"
     name_no_ext = sidecar.stem
     if name_no_ext == media_stem:
         return ""  # no language code, e.g. "Episode.srt"
-    suffix = name_no_ext[len(media_stem):]  # e.g. ".en" or ".eng"
-    return suffix.lstrip(".").lower()
+    suffix = name_no_ext[len(media_stem):]  # e.g. ".en" or ".en.sdh"
+    parts = suffix.lstrip(".").lower().split(".")
+    # Strip known flag suffixes (sdh, hi, cc, forced) to get the language code
+    flags = {"sdh", "hi", "cc", "forced"}
+    lang_parts = [p for p in parts if p not in flags]
+    return lang_parts[0] if lang_parts else ""
 
 
 def _mux_and_clean_single_file(
