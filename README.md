@@ -84,25 +84,43 @@ Set the target language in `llm_config.json`:
 
 ```json
 "target_language": {
-  "name": "Norwegian Bokmål",
+  "name": "Norwegian",
   "codes": ["no", "nor", "nob", "nb", "nno"],
   "sidecar_code": "no",
-  "mkv_tag": "nob",
+  "mkv_tag": "nor",
   "keep_with": ["en", "eng", "da", "dan", "sv", "swe"]
 }
 ```
 
 | Field | Purpose | Example |
 |-------|---------|---------|
-| `name` | Used in the LLM translation prompt | `"Norwegian Bokmål"` |
-| `codes` | ISO codes that mean "target already exists" (skip check) | `["no", "nor", "nob"]` |
-| `sidecar_code` | Output filename: `Movie.{code}.srt` | `"no"` → `Movie.no.srt` |
-| `mkv_tag` | Language tag when muxing into MKV | `"nob"` |
-| `keep_with` | Additional languages to keep when cleaning (target is always kept) | `["en", "eng"]` |
+| `name` | Language name used in the LLM translation prompt | `"Norwegian"` |
+| `codes` | All ISO codes for the target language. If a file already has subs tagged with any of these, it's skipped. | `["no", "nor", "nob"]` |
+| `sidecar_code` | Code used in the output filename: `Movie.{code}.srt` | `"no"` → `Movie.no.srt` |
+| `mkv_tag` | Language tag applied when muxing translated subs into MKV | `"nor"` |
+| `keep_with` | Additional languages to keep (see below) | `["en", "eng"]` |
+
+#### What does `keep_with` do?
+
+`keep_with` controls which **other** languages are allowed to stay in your MKV files alongside the target language. This affects two things:
+
+1. **Embedded tracks** — subtitle tracks in the MKV tagged with a `keep_with` language are kept. Everything else (Spanish, French, Croatian, etc.) is **removed** during the clean step.
+
+2. **Sidecar files** — if a `.en.srt`, `.da.srt`, or other sidecar file exists for a `keep_with` language, it gets **muxed into** the MKV automatically. After muxing, all sidecar files are deleted.
+
+Your target language is **always** kept — you don't need to list it in `keep_with`.
+
+**Example:** With the Norwegian config above, after processing a file you get:
+
+| What happens | Languages |
+|--------------|-----------|
+| **Required** — translated if missing | Norwegian |
+| **Kept** — embedded tracks stay, sidecars get muxed in | English, Danish, Swedish |
+| **Removed** — stripped from the MKV | Everything else (Spanish, French, etc.) |
 
 #### Examples for other languages
 
-**French:**
+**French** (keep only English alongside):
 ```json
 "target_language": {
   "name": "French",
@@ -113,7 +131,7 @@ Set the target language in `llm_config.json`:
 }
 ```
 
-**German:**
+**German** (keep only English alongside):
 ```json
 "target_language": {
   "name": "German",
@@ -124,7 +142,7 @@ Set the target language in `llm_config.json`:
 }
 ```
 
-**Brazilian Portuguese:**
+**Brazilian Portuguese** (keep English and Spanish alongside):
 ```json
 "target_language": {
   "name": "Brazilian Portuguese",
