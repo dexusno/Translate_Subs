@@ -1,5 +1,26 @@
 # Changelog
 
+## v1.1.2 — 2026-04-04
+
+### Features
+
+- **Fallback translation from any language** — when no subtitle in the priority source list is found, the script now falls back to any available subtitle in any language (embedded or external). The LLM can translate from virtually any language. Fallback usage is logged as `[FALLBACK]` for easy review.
+- **Update scripts** — `update.ps1` (Windows) and `linux/update.sh` (Linux) handle pulling the latest version, stashing local changes, and updating Python packages.
+
+### Bug Fixes
+
+- **Fixed ffmpeg stealing terminal input** — added `-nostdin` to all ffmpeg calls, preventing the terminal from becoming unresponsive after the script finishes.
+
+### Documentation
+
+- Rewrote README for clarity and readability.
+- Documented supported file formats (MKV gets full embed+clean, other formats get external `.srt` files).
+- Clarified that mux and clean run automatically — standalone scripts are optional.
+- Replaced technical jargon ("sidecar") with plain language ("external subtitle file").
+- Added usage disclaimer covering file modification risks, API costs, and legal responsibility.
+
+---
+
 ## v1.1.1 — 2026-04-04
 
 ### Bug Fixes
