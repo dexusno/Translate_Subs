@@ -236,9 +236,13 @@ Point the script at any folder. It scans recursively, so you can target a single
 ./linux/translate_subs.sh "/mnt/nas/movies"
 ```
 
-### Embed external subtitles into MKVs
+### Standalone tools
 
-Embed existing external `.srt` files into MKV containers as embedded tracks:
+The main `translate_subs` script handles everything automatically — translating, embedding into MKV, and cleaning unwanted tracks in one pass. You don't need to run the tools below separately under normal use.
+
+However, they're available as standalone scripts if you want to run just one step on its own:
+
+**Embed external subtitles into MKVs** — useful if you have `.srt` files from another source that you want to embed:
 
 ```powershell
 .\mux_subs.ps1 "D:\TvSeries\Show"                          # Windows
@@ -247,9 +251,7 @@ Embed existing external `.srt` files into MKV containers as embedded tracks:
 ./linux/mux_subs.sh "/media/tv/Show"                        # Linux
 ```
 
-### Clean unwanted tracks
-
-Remove subtitle tracks that aren't in your keep list:
+**Clean unwanted tracks** — useful if you just want to strip unwanted languages without translating:
 
 ```powershell
 .\clean_subs.ps1 "D:\Movies" -DryRun                        # Windows
