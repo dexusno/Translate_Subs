@@ -1,5 +1,28 @@
 # Changelog
 
+## v1.1.0 — 2026-04-04
+
+### Features
+
+- **Linux/Debian support** — full set of bash wrappers in `linux/` for all scripts, plus `install.sh` for Debian 13 (apt-get, Python venv, ffmpeg, mkvtoolnix).
+- **Streaming pipeline** — translation starts as soon as the first file is found, instead of waiting for the entire folder scan to complete. Major perceived speedup on network/VPN paths.
+- **Directory cache** — one `rglob` pass at startup replaces thousands of per-file `exists()` calls. Eliminates slow sidecar lookups over network shares.
+- **Combined mux+clean** — single ffmpeg remux pass that adds translated subs, muxes in wanted sidecars (no/en/da/sv), removes unwanted tracks, and deletes all sidecar files. Halves network I/O compared to the previous two-pass approach.
+- **Sidecar consolidation** — all wanted-language sidecars (Norwegian, English, Danish, Swedish) are muxed into the MKV in one pass. All sidecar files are deleted after processing.
+- **Automatic nob→nor retag** — embedded tracks tagged "nob" (Norwegian Bokmål) are automatically retagged to "nor" (Norwegian) during the remux pass, with zero overhead.
+- **Fuzzy folder picker** (`linux/pick.sh`) — fzf-based interactive selector for choosing a media folder and action (translate, clean, mux, dry-run). No more typing long paths.
+- **sync-folder** script (`.ps1` and `.sh`) — sync video files between local and remote folders with date comparison, delete-before-copy to avoid SMB permission errors.
+- **start-llama-server** script (`.ps1` and `.sh`) — launch llama.cpp server for local LLM inference.
+- **Per-profile settings** — `batch_size`, `parallel`, and `timeout` can now be configured per LLM profile in `llm_config.json`.
+- **Parallel default bumped to 8** for cloud API profiles (DeepSeek, OpenAI, etc.).
+
+### Bug Fixes
+
+- Fixed `resolve_profile()` stripping `timeout`, `batch_size`, and `parallel` from profile config.
+- Fixed PS1 wrappers overriding profile-based `batch_size`/`parallel` defaults when not explicitly specified.
+
+---
+
 ## v1.0.0 — 2026-03-22
 
 First public release.
