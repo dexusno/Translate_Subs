@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# ──────────────────────────────────────────────────────────────────────────────
-# pick.sh — Fuzzy-pick a media folder and run a translate_subs action on it.
+# ------------------------------------------------------------------------------
+# pick.sh -- Fuzzy-pick a media folder and run a translate_subs action on it.
 #
 # Usage:
 #   ./pick.sh /mnt/media/Tv
@@ -8,12 +8,12 @@
 #   ./pick.sh                        # uses default media root from config
 #
 # Requires: fzf (sudo apt install fzf)
-# ──────────────────────────────────────────────────────────────────────────────
+# ------------------------------------------------------------------------------
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# ── Default media roots (edit these to match your setup) ─────────────────────
+# -- Default media roots (edit these to match your setup) ----------------------
 # If no argument is given, these folders are listed together.
 DEFAULT_ROOTS=(
     "/mnt/media/Tv"
@@ -21,26 +21,24 @@ DEFAULT_ROOTS=(
     "/mnt/media/Documentaries"
 )
 
-# ── Check fzf ────────────────────────────────────────────────────────────────
+# -- Check fzf -----------------------------------------------------------------
 
-if ! command -v fzf &>/dev/null; then
+if ! command -v fzf >/dev/null 2>&1; then
     echo "  fzf not installed. Run: sudo apt install fzf"
     exit 1
 fi
 
-# ── Build folder list ────────────────────────────────────────────────────────
+# -- Build folder list ---------------------------------------------------------
 
 MEDIA_ROOT="${1:-}"
 
 if [[ -n "$MEDIA_ROOT" ]]; then
-    # Single root provided as argument
     if [[ ! -d "$MEDIA_ROOT" ]]; then
         echo "  [ERROR] Not a directory: $MEDIA_ROOT"
         exit 1
     fi
     ROOTS=("$MEDIA_ROOT")
 else
-    # Use defaults — filter to ones that actually exist
     ROOTS=()
     for root in "${DEFAULT_ROOTS[@]}"; do
         [[ -d "$root" ]] && ROOTS+=("$root")
@@ -51,7 +49,6 @@ else
     fi
 fi
 
-# List immediate subdirectories (series/movie folders), prefixed with root
 FOLDER_LIST=""
 for root in "${ROOTS[@]}"; do
     root_name="$(basename "$root")"
@@ -66,7 +63,7 @@ if [[ -z "$FOLDER_LIST" ]]; then
     exit 1
 fi
 
-# ── Pick folder with fzf ────────────────────────────────────────────────────
+# -- Pick folder with fzf ------------------------------------------------------
 
 PICKED=$(echo "$FOLDER_LIST" | fzf \
     --header="Pick a folder (type to filter, Enter to select, Esc to cancel)" \
@@ -76,8 +73,6 @@ PICKED=$(echo "$FOLDER_LIST" | fzf \
     --prompt="  > " \
 ) || { echo "  Cancelled."; exit 0; }
 
-# Parse the selection back to a full path
-# Format: "[Tv] Breaking Bad" → find which root contains it
 PICKED_ROOT_NAME=$(echo "$PICKED" | sed 's/^\[\([^]]*\)\].*/\1/')
 PICKED_FOLDER_NAME=$(echo "$PICKED" | sed 's/^\[[^]]*\] //')
 
@@ -97,7 +92,7 @@ if [[ -z "$FULL_PATH" ]]; then
     exit 1
 fi
 
-# ── Pick action ──────────────────────────────────────────────────────────────
+# -- Pick action ---------------------------------------------------------------
 
 ACTION=$(printf '%s\n' \
     "translate        Translate subtitles" \
@@ -117,7 +112,7 @@ ACTION=$(printf '%s\n' \
 
 ACTION_KEY=$(echo "$ACTION" | awk '{print $1}')
 
-# ── Execute ──────────────────────────────────────────────────────────────────
+# -- Execute -------------------------------------------------------------------
 
 echo ""
 echo "  Folder: $FULL_PATH"
