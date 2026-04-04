@@ -1,5 +1,21 @@
 # Changelog
 
+## v1.1.1 — 2026-04-04
+
+### Bug Fixes
+
+- **Fixed sidecar detection missing `.sdh`, `.hi`, `.cc`, `.forced` variants** — sidecars like `Episode.en.sdh.srt` were not found during scanning and silently deleted during cleanup. Now correctly detected, translated, and muxed in.
+- **Don't delete unclassified sidecars** — sidecars whose language can't be determined are now left alone instead of being deleted. Only sidecars that were muxed in, are redundant, or are in an unwanted language get removed.
+- **Fixed subtitle track titles** — retagged tracks (nob→nor) and muxed sidecars now get clean titles ("Norwegian", "English", etc.) instead of inheriting stale titles like "Norwegian Bokmal".
+- **Fixed pick.sh on Linux** — replaced Unicode box-drawing characters with ASCII, added `.gitattributes` to force LF line endings for shell scripts, marked all `.sh` files executable in git.
+
+### Improvements
+
+- **pick.sh reads paths from `media_roots.conf`** — media folder paths are now stored in a gitignored config file so `git pull` doesn't overwrite your settings.
+- **Improved `keep_with` documentation** in README with clear explanation and examples.
+
+---
+
 ## v1.1.0 — 2026-04-04
 
 ### Features
