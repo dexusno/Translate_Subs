@@ -1334,9 +1334,25 @@ def _mux_and_clean_single_file(
             log.debug("[MUX+CLEAN] Will mux sidecar: %s (lang=%s)",
                       sc.name, mkv_tag_for_lang)
 
+    # ── Check for "nob" tags that should be "nor" ───────────────────
+    # Retag Norwegian Bokmål → Norwegian in kept tracks
+    nob_retag_indices: list[tuple[int, int]] = []  # (stream_index, sub_position)
+    _sub_pos = 0
+    for s in streams:
+        if s.get("codec_type") != "subtitle":
+            continue
+        if s["index"] in keep_sub_indices:
+            lang = (s.get("tags") or {}).get("language", "").lower()
+            if lang == "nob":
+                nob_retag_indices.append((s["index"], _sub_pos))
+            _sub_pos += 1
+
     # ── Check if any work is needed ───────────────────────────────────
-    if not sidecars_to_mux and tracks_removed == 0:
-        # Nothing to mux, nothing to clean — just delete unwanted sidecars
+    needs_remux = (sidecars_to_mux or tracks_removed > 0
+                   or len(nob_retag_indices) > 0)
+
+    if not needs_remux:
+        # Nothing to mux, nothing to clean, no retags — just delete sidecars
         if sidecars_to_delete:
             for sc in sidecars_to_delete:
                 if not keep_sidecar:
@@ -1348,6 +1364,10 @@ def _mux_and_clean_single_file(
             log.debug("[MUX+CLEAN] Nothing to do: %s", rel)
         return
 
+    if nob_retag_indices:
+        log.debug("[MUX+CLEAN] Retagging %d track(s) nob -> nor: %s",
+                  len(nob_retag_indices), rel)
+
     # ── Build ffmpeg command ──────────────────────────────────────────
     # Input 0: original MKV
     # Inputs 1..N: sidecar files to mux in
@@ -1358,13 +1378,21 @@ def _mux_and_clean_single_file(
     # Map: all video + audio from input 0
     map_args = ["-map", "0:v", "-map", "0:a"]
 
-    # Map kept embedded subtitle tracks
+    # Map kept embedded subtitle tracks + retag nob → nor
+    metadata_args = []
+    sub_track_idx = 0
     for idx in sorted(keep_sub_indices):
         map_args.extend(["-map", f"0:{idx}"])
+        # Check if this track needs retagging
+        for stream_idx, _ in nob_retag_indices:
+            if stream_idx == idx:
+                metadata_args.extend([
+                    f"-metadata:s:s:{sub_track_idx}", "language=nor",
+                ])
+                break
+        sub_track_idx += 1
 
     # Map sidecar inputs (input 1, 2, 3, ...)
-    metadata_args = []
-    sub_track_idx = len(keep_sub_indices)
     for i, (_, _, tag) in enumerate(sidecars_to_mux):
         input_num = i + 1  # input 0 is the MKV
         map_args.extend(["-map", f"{input_num}:0"])
@@ -1441,6 +1469,8 @@ def _mux_and_clean_single_file(
             parts.append(f"muxed {', '.join(muxed_names)}")
         if tracks_removed > 0:
             parts.append(f"removed {tracks_removed} track(s)")
+        if nob_retag_indices:
+            parts.append(f"retagged {len(nob_retag_indices)} nob->nor")
         if sidecars_to_delete and not keep_sidecar:
             parts.append(f"deleted {len(sidecars_to_delete)} sidecar(s)")
         saved_mb = (original_size - new_size) / (1024 * 1024)
