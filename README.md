@@ -260,17 +260,6 @@ However, they're available as standalone scripts if you want to run just one ste
 ./linux/clean_subs.sh "/media/movies" --dry-run              # Linux
 ```
 
-### Sync folders
-
-Copy video files between local and remote folders. Compares modification dates — unchanged files are skipped, changed files are deleted and re-copied (avoids SMB permission issues):
-
-```powershell
-.\sync-folder.ps1 "D:\TvSeries\Show" "\\nas\Tv\Show"       # Windows
-```
-```bash
-./linux/sync-folder.sh "/local/tv/Show" "/mnt/nas/tv/Show"  # Linux
-```
-
 ---
 
 ## Scripts
@@ -280,7 +269,6 @@ Copy video files between local and remote folders. Compares modification dates �
 | `translate_subs.ps1` / `.py` | `linux/translate_subs.sh` | Translate, embed, and clean in one pass |
 | `mux_subs.ps1` / `.py` | `linux/mux_subs.sh` | Embed external subtitle files into MKV containers |
 | `clean_subs.ps1` / `.py` | `linux/clean_subs.sh` | Remove unwanted subtitle tracks from MKVs |
-| `sync-folder.ps1` | `linux/sync-folder.sh` | Sync video files between folders |
 | `start-llama-server.ps1` | `linux/start-llama-server.sh` | Start llama.cpp server for local translation |
 | `install.ps1` | `linux/install.sh` | Install dependencies and configure the project |
 | — | `linux/pick.sh` | Interactive folder picker (requires fzf) |
