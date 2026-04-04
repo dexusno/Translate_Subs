@@ -1066,6 +1066,59 @@ def _generate_jobs(
             _skip(media, rel, "Source language bitmap only (needs OCR)")
             continue
 
+        # ── Step 5c: Fallback — any tagged text track not in priority list?
+        if not skip_detect:
+            _fallback_stream = None
+            for s in streams:
+                if s.get("codec_type") != "subtitle":
+                    continue
+                codec = s.get("codec_name", "").lower()
+                if codec not in TEXT_SUB_CODECS:
+                    continue
+                lang = (s.get("tags") or {}).get("language", "").lower()
+                if not lang:
+                    continue  # untagged — handled in step 6
+                if lang in target_codes:
+                    continue  # target language — shouldn't reach here
+                if lang in all_source_codes:
+                    continue  # priority language — shouldn't reach here
+                if _is_forced_track(s):
+                    continue  # forced tracks are partial
+                _fallback_stream = s
+                break
+
+            if _fallback_stream:
+                fb_idx = _fallback_stream["index"]
+                fb_codec = _fallback_stream.get("codec_name", "?")
+                fb_lang = ((_fallback_stream.get("tags") or {})
+                           .get("language", "?"))
+                log.info("[FALLBACK] Embedded idx=%d (%s, %s) — "
+                         "not in source list, using as fallback: %s",
+                         fb_idx, fb_codec, fb_lang, rel)
+
+                if dry_run:
+                    log.info("[DRY-RUN] Would extract idx=%d "
+                             "(%s fallback) + translate: %s",
+                             fb_idx, fb_lang.upper(), rel)
+                    stats["translated"] += 1
+                    continue
+
+                temp_srt = Path(tempfile.mktemp(suffix=".srt"))
+                if not extract_subtitle_track(media, fb_idx, temp_srt):
+                    log.error("[ERROR] Extraction failed: %s", rel)
+                    stats["errors"] += 1
+                    continue
+
+                yield {
+                    "media": media, "rel": rel, "output": output_path,
+                    "srt_source": temp_srt, "temp_files": [temp_srt],
+                    "description": (
+                        f"Fallback embedded idx={fb_idx} "
+                        f"({fb_codec}, {fb_lang})"),
+                    "source_lang": fb_lang.upper(),
+                }
+                continue
+
         # ── Step 6: Untagged text tracks — detect language ────────────────
         if not skip_detect:
             untagged = find_untagged_text_subs(streams)
@@ -1103,43 +1156,118 @@ def _generate_jobs(
                             matched_lang = lang["name"]
                             break
 
+                    # Map detected code to a language name
                     if matched_lang:
-                        if dry_run:
-                            log.info(
-                                "[DRY-RUN] Would extract idx=%d "
-                                "(detected %s) + translate: %s",
-                                track_idx, matched_lang, rel)
-                            stats["translated"] += 1
-                            continue
-
-                        temp_srt = Path(tempfile.mktemp(suffix=".srt"))
-                        log.debug("[EXTRACT] idx=%d (detected %s) from %s",
-                                 track_idx, matched_lang, rel)
-                        if not extract_subtitle_track(media, track_idx,
-                                                      temp_srt):
-                            log.error("[ERROR] Extraction failed: %s", rel)
-                            stats["errors"] += 1
-                            continue
-
-                        yield {
-                            "media": media, "rel": rel, "output": output_path,
-                            "srt_source": temp_srt, "temp_files": [temp_srt],
-                            "description": (
-                                f"Embedded idx={track_idx} "
-                                f"(detected {matched_lang})"),
-                            "source_lang": matched_lang,
-                        }
-                        continue
+                        detected_name = matched_lang
                     else:
-                        _skip(media, rel,
-                              f"Detected '{detected_code}' (not in source list)")
+                        # Not in priority list — use as fallback
+                        detected_name = detected_code.upper()
+                        log.info("[FALLBACK] idx=%d detected '%s' "
+                                 "(not in source list, using as fallback): %s",
+                                 track_idx, detected_code, rel)
+
+                    if dry_run:
+                        log.info(
+                            "[DRY-RUN] Would extract idx=%d "
+                            "(detected %s) + translate: %s",
+                            track_idx, detected_name, rel)
+                        stats["translated"] += 1
                         continue
+
+                    temp_srt = Path(tempfile.mktemp(suffix=".srt"))
+                    log.debug("[EXTRACT] idx=%d (detected %s) from %s",
+                             track_idx, detected_name, rel)
+                    if not extract_subtitle_track(media, track_idx,
+                                                  temp_srt):
+                        log.error("[ERROR] Extraction failed: %s", rel)
+                        stats["errors"] += 1
+                        continue
+
+                    yield {
+                        "media": media, "rel": rel, "output": output_path,
+                        "srt_source": temp_srt, "temp_files": [temp_srt],
+                        "description": (
+                            f"Embedded idx={track_idx} "
+                            f"(detected {detected_name})"),
+                        "source_lang": detected_name,
+                    }
+                    continue
                 else:
                     _skip(media, rel,
                           f"Language detection failed for idx={track_idx}")
                     continue
 
-        # ── Step 7: Nothing found ─────────────────────────────────────────
+        # ── Step 7: Fallback — any external subtitle file we can read? ──
+        # If no priority-list match was found, look for ANY external .srt/.ass
+        # file and let the LLM detect and translate from whatever language it is.
+        if not skip_detect:
+            all_sc = _find_all_sidecars(media)
+            for sc in all_sc:
+                lang_code = _sidecar_lang_code(sc, media.stem)
+                # Skip if it's our target language
+                if lang_code and lang_code in target_codes:
+                    continue
+                # Skip bitmap-format files
+                if sc.suffix.lower() not in (".srt", ".ass"):
+                    continue
+                # Read a sample to detect language
+                try:
+                    sample = sc.read_text(
+                        encoding="utf-8-sig", errors="replace")[:2000]
+                except OSError:
+                    continue
+                if not sample.strip():
+                    continue
+
+                # Determine source language name
+                if lang_code:
+                    fallback_name = lang_code.upper()
+                else:
+                    fallback_name = "auto-detect"
+
+                log.info("[FALLBACK] External file %s (lang=%s): %s",
+                         sc.name, fallback_name, rel)
+
+                srt_source = sc
+                temp_files_fb: list[Path] = []
+
+                if sc.suffix.lower() == ".ass":
+                    if dry_run:
+                        log.info("[DRY-RUN] Would convert ASS + translate "
+                                 "(%s fallback): %s", fallback_name, rel)
+                        stats["translated"] += 1
+                        break
+                    temp_srt = Path(tempfile.mktemp(suffix=".srt"))
+                    temp_files_fb.append(temp_srt)
+                    if not convert_ass_to_srt(sc, temp_srt):
+                        log.error("[ERROR] ASS conversion failed: %s", rel)
+                        stats["errors"] += 1
+                        break
+                    srt_source = temp_srt
+
+                if dry_run:
+                    log.info("[DRY-RUN] Would translate (%s fallback): %s",
+                             fallback_name, rel)
+                    stats["translated"] += 1
+                    break
+
+                yield {
+                    "media": media, "rel": rel, "output": output_path,
+                    "srt_source": srt_source, "temp_files": temp_files_fb,
+                    "description": (
+                        f"Fallback {sc.name} ({fallback_name})"),
+                    "source_lang": fallback_name,
+                }
+                break
+            else:
+                # for-else: no suitable fallback found
+                stats["no_subs"].append(str(rel))
+                _skip(media, rel, "No source subs found")
+                continue
+            # break landed here — job was yielded or dry-run logged
+            continue
+
+        # ── Step 8: Nothing found ─────────────────────────────────────────
         stats["no_subs"].append(str(rel))
         _skip(media, rel, "No source subs found")
 
