@@ -1334,8 +1334,13 @@ def _mux_and_clean_single_file(
     for sc in all_sidecars:
         lang = _sidecar_lang_code(sc, media.stem)
 
-        if not lang or lang not in langs_to_keep:
-            # Unknown or unwanted language — delete, don't mux
+        if not lang:
+            # Couldn't determine language — leave it alone
+            log.debug("[MUX+CLEAN] Sidecar unknown, keeping: %s", sc.name)
+            continue
+
+        if lang not in langs_to_keep:
+            # Unwanted language (Spanish, French, etc.) — safe to delete
             sidecars_to_delete.append(sc)
             continue
 
@@ -1345,13 +1350,13 @@ def _mux_and_clean_single_file(
         already_embedded = lang in embedded_langs or mkv_tag_for_lang in embedded_langs
 
         if already_embedded:
-            # Already inside the MKV — just delete the redundant sidecar
+            # Already inside the MKV — safe to delete the redundant sidecar
             sidecars_to_delete.append(sc)
             log.debug("[MUX+CLEAN] Sidecar redundant (embedded): %s", sc.name)
         else:
-            # Not embedded — mux it in
+            # Not embedded — mux it in, then delete
             sidecars_to_mux.append((sc, lang, mkv_tag_for_lang))
-            sidecars_to_delete.append(sc)  # delete after muxing
+            sidecars_to_delete.append(sc)  # delete after successful mux
             embedded_langs.add(lang)  # prevent dupes if multiple sidecars
             embedded_langs.add(mkv_tag_for_lang)
             log.debug("[MUX+CLEAN] Will mux sidecar: %s (lang=%s)",
