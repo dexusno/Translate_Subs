@@ -264,8 +264,8 @@ However, they're available as standalone scripts if you want to run just one ste
 
 ## Scripts
 
-| Script | Linux | Purpose |
-|--------|-------|---------|
+| PowerShell | Linux | Purpose |
+|------------|-------|---------|
 | `translate_subs.ps1` / `.py` | `linux/translate_subs.sh` | Translate, embed, and clean in one pass |
 | `mux_subs.ps1` / `.py` | `linux/mux_subs.sh` | Embed external subtitle files into MKV containers |
 | `clean_subs.ps1` / `.py` | `linux/clean_subs.sh` | Remove unwanted subtitle tracks from MKVs |
