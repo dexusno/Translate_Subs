@@ -1,6 +1,6 @@
 # Translate Subs
 
-Translate subtitles for your entire media library using the power of large language models. Point it at a folder and it handles everything — detecting existing subtitles in your files (embedded or external `.srt`/`.ass` files), translating them to your language, embedding the result into your MKV files, and cleaning up tracks you don't need.
+Translate subtitles for your entire media library using the power of large language models. Point it at a folder and it handles everything — detecting existing subtitles in your files (embedded or external `.srt`/`.ass` files), translating them to your language, and cleaning up what you don't need.
 
 Unlike traditional subtitle translation tools that do word-for-word replacement, Translate Subs uses LLMs that understand context, idioms, slang, and cultural references. The result is subtitles that read naturally — like they were written by a native speaker, not run through a machine translator.
 
@@ -10,7 +10,7 @@ Works with TV series, movies, documentaries — any media library, any folder st
 
 - **Natural translations** — LLMs understand context, tone, and intent. Jokes land, slang makes sense, and dialogue flows naturally.
 - **Fully configurable** — choose your target language, source languages, which languages to keep, and which LLM provider to use. Everything is in one config file.
-- **Hands-off batch processing** — point it at a folder and walk away. It finds subtitles (embedded or external `.srt`/`.ass` files), translates, embeds into MKV, and cleans up unwanted tracks. Re-running is safe — already translated files are skipped.
+- **Hands-off batch processing** — point it at a folder and walk away. It finds subtitles, translates them, and handles the rest. Re-running is safe — already translated files are skipped.
 - **Fast** — streaming pipeline starts translating as soon as the first file is found. Translates up to 8 files in parallel. Directory caching eliminates slow lookups over network shares.
 - **Flexible source detection** — finds subtitles in external files (`.srt`, `.ass`, including `.sdh`, `.hi`, `.forced` variants), embedded MKV tracks, and even untagged tracks (identified via LLM). If no preferred language is available, falls back to any language it can find — the LLM handles the rest.
 - **Smart MKV handling** — translating, embedding, and cleaning happen in a single remux pass. One read, one write — half the I/O compared to doing them separately.
@@ -295,9 +295,18 @@ For each video file:
 5. **Translate** — the subtitle text is sent to the LLM in batches. The response is reassembled into a properly formatted `.srt` file.
 6. **Embed + clean** — in a single remux pass: the translated subs are embedded, any wanted-language external files are embedded, unwanted tracks are removed, and external subtitle files are cleaned up.
 
-For non-MKV files, a `.srt` file is created next to the video. Most players (Plex, Jellyfin, VLC, Kodi) pick these up automatically.
-
 Translation starts as soon as the first file is ready — the scanning and translating phases overlap, so you don't wait for the entire library to be scanned before work begins.
+
+## Supported File Formats
+
+The script works with any common video format — MKV is not required.
+
+| Format | Translation | Embedding | Track cleanup |
+|--------|------------|-----------|---------------|
+| **MKV** | Full support — translates from embedded or external subtitles | Translated subs + wanted external files are embedded directly into the MKV | Unwanted subtitle tracks are removed, external files cleaned up |
+| **MP4, AVI, MOV, WebM, OGM** | Full support — translates from external `.srt`/`.ass` files | Not supported (these formats don't allow easy subtitle embedding without re-encoding) | Not applicable |
+
+For non-MKV files, the translated subtitles are saved as a `.srt` file next to the video (e.g. `Movie.no.srt`). Existing external subtitle files are left untouched. Most players — Plex, Jellyfin, VLC, Kodi — pick up external `.srt` files automatically.
 
 ## Folder Structure
 
