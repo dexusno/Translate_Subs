@@ -144,7 +144,7 @@ def mux_single_file(
 
     try:
         cmd = [
-            "ffmpeg", "-y",
+            "ffmpeg", "-y", "-nostdin",
             "-i", str(media),
             "-i", str(srt_path),
             "-map", "0",

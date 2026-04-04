@@ -97,7 +97,7 @@ def _extract_text_sample(media: Path, stream_index: int, max_cues: int = 10) -> 
     try:
         result = subprocess.run(
             [
-                "ffmpeg", "-y",
+                "ffmpeg", "-y", "-nostdin",
                 "-i", str(media),
                 "-map", f"0:{stream_index}",
                 "-c:s", "text",
@@ -266,7 +266,7 @@ def remux_without_tracks(media: Path, keep_sub_indices: list[int]) -> bool:
             map_args.extend(["-map", f"0:{idx}"])
 
         cmd = [
-            "ffmpeg", "-y",
+            "ffmpeg", "-y", "-nostdin",
             "-i", str(media),
             "-c", "copy",
             *map_args,

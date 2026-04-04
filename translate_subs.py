@@ -653,7 +653,7 @@ def _extract_text_sample(media: Path, stream_index: int, max_cues: int = 10) -> 
     try:
         result = subprocess.run(
             [
-                "ffmpeg", "-y",
+                "ffmpeg", "-y", "-nostdin",
                 "-i", str(media),
                 "-map", f"0:{stream_index}",
                 "-c:s", "text",
@@ -749,7 +749,7 @@ def _tag_track_language(media: Path, stream_index: int, lang_code: str) -> bool:
 
     try:
         cmd = [
-            "ffmpeg", "-y",
+            "ffmpeg", "-y", "-nostdin",
             "-i", str(media),
             "-map", "0",
             "-c", "copy",
@@ -796,7 +796,7 @@ def extract_subtitle_track(media_path: Path, stream_index: int, output: Path) ->
     try:
         result = subprocess.run(
             [
-                "ffmpeg", "-y",
+                "ffmpeg", "-y", "-nostdin",
                 "-i", str(media_path),
                 "-map", f"0:{stream_index}",
                 "-c:s", "text",
@@ -814,7 +814,7 @@ def convert_ass_to_srt(ass_path: Path, srt_output: Path) -> bool:
     try:
         result = subprocess.run(
             [
-                "ffmpeg", "-y",
+                "ffmpeg", "-y", "-nostdin",
                 "-i", str(ass_path),
                 "-c:s", "srt",
                 str(srt_output),
@@ -1440,7 +1440,7 @@ def _mux_and_clean_single_file(
 
     try:
         cmd = [
-            "ffmpeg", "-y",
+            "ffmpeg", "-y", "-nostdin",
             *input_args,
             *map_args,
             "-c", "copy",
