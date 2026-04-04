@@ -1,6 +1,6 @@
 # Translate Subs
 
-Translate subtitles for your entire media library using the power of large language models. Point it at a folder and it handles everything — finding subtitles, translating them, embedding them into your MKV files, and cleaning up what you don't need.
+Translate subtitles for your entire media library using the power of large language models. Point it at a folder and it handles everything — detecting existing subtitles in your files (embedded or sidecar), translating them to your language, embedding the result into your MKV files, and cleaning up tracks you don't need.
 
 Unlike traditional subtitle translation tools that do word-for-word replacement, Translate Subs uses LLMs that understand context, idioms, slang, and cultural references. The result is subtitles that read naturally — like they were written by a native speaker, not run through a machine translator.
 
