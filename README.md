@@ -199,6 +199,23 @@ CLI flags (`--batch-size`, `--parallel`) override profile settings when specifie
 
 ## Usage
 
+### Interactive folder picker (Linux)
+
+Instead of typing full paths, use the fuzzy picker to browse and select folders:
+
+```bash
+sudo apt install fzf          # one-time setup
+./linux/pick.sh                # pick from default media roots
+./linux/pick.sh /mnt/media/Tv  # pick from a specific root
+```
+
+1. Type a few letters to filter (e.g. `break` matches "Breaking Bad")
+2. Arrow keys to highlight, Enter to select
+3. Pick an action: translate, clean, mux, or dry-run variants
+4. Script runs automatically
+
+Edit the `DEFAULT_ROOTS` array at the top of `pick.sh` to set your media folder paths so you can run it without arguments.
+
 ### Translate a folder
 
 Point the script at any folder containing video files. It scans recursively, so you can target a single movie folder, a TV series, or an entire library root.
