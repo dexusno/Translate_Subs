@@ -272,7 +272,6 @@ However, they're available as standalone scripts if you want to run just one ste
 | `start-llama-server.ps1` | `linux/start-llama-server.sh` | Start llama.cpp server for local translation |
 | `install.ps1` | `linux/install.sh` | Install dependencies and configure the project |
 | — | `linux/pick.sh` | Interactive folder picker (requires fzf) |
-| `test_deepseek.py` | — | Standalone translation API test |
 
 ## How It Works
 
