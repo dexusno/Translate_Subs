@@ -13,13 +13,27 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# -- Default media roots (edit these to match your setup) ----------------------
-# If no argument is given, these folders are listed together.
-DEFAULT_ROOTS=(
-    "/mnt/media/Tv"
-    "/mnt/media/Movies"
-    "/mnt/media/Documentaries"
-)
+# -- Default media roots -------------------------------------------------------
+# Reads from media_roots.conf (one path per line, # comments allowed).
+# Create it once and git pull will never overwrite it.
+# If the file doesn't exist, falls back to these defaults:
+ROOTS_CONF="$(dirname "$SCRIPT_DIR")/media_roots.conf"
+DEFAULT_ROOTS=()
+if [[ -f "$ROOTS_CONF" ]]; then
+    while IFS= read -r line; do
+        line="${line%%#*}"       # strip comments
+        line="${line%"${line##*[![:space:]]}"}"  # trim trailing whitespace
+        line="${line#"${line%%[![:space:]]*}"}"  # trim leading whitespace
+        [[ -n "$line" ]] && DEFAULT_ROOTS+=("$line")
+    done < "$ROOTS_CONF"
+fi
+if [[ ${#DEFAULT_ROOTS[@]} -eq 0 ]]; then
+    DEFAULT_ROOTS=(
+        "/mnt/media/Tv"
+        "/mnt/media/Movies"
+        "/mnt/media/Documentaries"
+    )
+fi
 
 # -- Check fzf -----------------------------------------------------------------
 

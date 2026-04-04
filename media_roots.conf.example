@@ -1,0 +1,9 @@
+# Media root folders for pick.sh (one path per line)
+# Copy this file to media_roots.conf and edit to match your setup:
+#   cp media_roots.conf.example media_roots.conf
+#
+# media_roots.conf is gitignored and won't be overwritten by git pull.
+
+/mnt/media/Tv
+/mnt/media/Movies
+/mnt/media/Documentaries

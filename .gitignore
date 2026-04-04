@@ -1,5 +1,6 @@
 # Environment / secrets
 .env
+media_roots.conf
 
 # Python
 __pycache__/
