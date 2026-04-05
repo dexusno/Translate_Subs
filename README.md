@@ -152,13 +152,15 @@ Choose your translation backend with `--profile`. Each profile is defined in `ll
 
 | Profile | Provider | Model | Notes |
 |---------|----------|-------|-------|
-| `deepseek` | DeepSeek | deepseek-chat | Fast and affordable |
-| `openai` | OpenAI | gpt-4o | High quality |
+| `deepseek` | DeepSeek | deepseek-chat | **Recommended** — excellent quality, very low cost |
+| `openai` | OpenAI | gpt-4o | High quality, higher cost |
 | `groq` | Groq | llama-3.3-70b | Free tier available |
 | `mistral` | Mistral | mistral-large | Good for European languages |
 | `openrouter` | OpenRouter | deepseek/deepseek-chat | Access to many models |
 | `ollama` | Ollama | qwen2.5:14b | Free, runs locally |
 | `lmstudio` | LM Studio | (loaded model) | Free, runs locally |
+
+**We recommend DeepSeek** as the default provider. It produces natural, context-aware translations at a fraction of the cost of other cloud APIs. In our experience, a typical 45-minute episode costs about 1 cent to translate. A full season runs about $0.10, and even translating 1,000 episodes stays under $10. See [DeepSeek pricing](https://api-docs.deepseek.com/quick_start/pricing) for current rates. *We have no affiliation with DeepSeek and receive no benefit from recommending them — it's simply what works best for this use case.*
 
 Adding a custom provider is easy — any OpenAI-compatible API works:
 
