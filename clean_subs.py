@@ -196,12 +196,22 @@ def classify_subtitle_tracks(
 
     sub_streams = [s for s in streams if s.get("codec_type") == "subtitle"]
 
+    # Bitmap subtitle codecs (PGS, DVD subs) — always removed
+    bitmap_codecs = {"hdmv_pgs_subtitle", "dvd_subtitle", "xsub"}
+
     for s in sub_streams:
         idx = s["index"]
         codec = s.get("codec_name", "?")
         tags = s.get("tags") or {}
         lang = tags.get("language", "").strip().lower()
         title = tags.get("title", "")
+
+        # Always remove bitmap/PGS tracks regardless of language
+        if codec in bitmap_codecs:
+            log.debug("  [REMOVE] idx=%d %s lang=%s (bitmap, incompatible) %s",
+                      idx, codec, lang or "???", title)
+            remove.append(s)
+            continue
 
         if lang and lang in langs_to_keep:
             log.debug("  [KEEP]   idx=%d %s lang=%s %s", idx, codec, lang, title)
@@ -238,8 +248,8 @@ def classify_subtitle_tracks(
             log.debug("  [KEEP]   idx=%d %s — detection failed, keeping", idx, codec)
             keep.append(s)
         else:
-            # Bitmap sub with no language — can't extract text, keep to be safe
-            log.debug("  [KEEP]   idx=%d %s lang=??? (bitmap, can't detect)", idx, codec)
+            # Unknown codec with no language — keep to be safe
+            log.debug("  [KEEP]   idx=%d %s lang=??? (unknown codec) %s", idx, codec, title)
             keep.append(s)
 
     return keep, remove

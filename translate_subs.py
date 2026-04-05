@@ -487,8 +487,16 @@ def run_ffprobe(path: Path) -> list[dict]:
 
 
 def has_target_embedded(streams: list[dict], target_codes: set[str]) -> bool:
-    """Check if any subtitle stream has a language tag matching the target."""
+    """Check if any text-based subtitle stream has a language tag matching the target.
+
+    Bitmap formats (PGS, DVD subs) are ignored — they don't count as
+    having the target language, since they're incompatible with most
+    players and will be removed during cleaning.
+    """
     for s in streams:
+        codec = s.get("codec_name", "").lower()
+        if codec in BITMAP_SUB_CODECS:
+            continue
         lang = (s.get("tags") or {}).get("language", "").lower()
         if lang in target_codes:
             return True
