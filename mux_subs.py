@@ -79,18 +79,20 @@ def run_ffprobe(path: Path) -> list[dict]:
 BITMAP_SUB_CODECS = {"hdmv_pgs_subtitle", "dvd_subtitle", "xsub"}
 
 
-def has_target_embedded(streams: list[dict], target_codes: set[str]) -> bool:
-    """Check if any text-based subtitle stream has a target language tag.
+def has_target_embedded(streams: list[dict], target_codes: set[str],
+                        remove_bitmap: bool = True) -> bool:
+    """Check if any subtitle stream has a target language tag.
 
-    Bitmap formats (PGS, DVD subs) are ignored — they're incompatible
-    and will be removed during cleaning.
+    When remove_bitmap is True, bitmap formats (PGS, DVD subs) are
+    ignored — they're incompatible and will be removed during cleaning.
     """
     for s in streams:
         if s.get("codec_type") != "subtitle":
             continue
-        codec = s.get("codec_name", "").lower()
-        if codec in BITMAP_SUB_CODECS:
-            continue
+        if remove_bitmap:
+            codec = s.get("codec_name", "").lower()
+            if codec in BITMAP_SUB_CODECS:
+                continue
         lang = (s.get("tags") or {}).get("language", "").lower()
         if lang in target_codes:
             return True

@@ -98,6 +98,18 @@ This setting affects two things:
 
 After processing, each MKV will contain only your target language and the languages listed in `keep_with`. Everything else is stripped out.
 
+### Bitmap subtitle removal (PGS)
+
+By default, bitmap-based subtitle tracks (PGS, DVD subs) are always removed regardless of language. These formats are incompatible with many players and workflows, and text-based subtitles (SRT) are preferred for translation.
+
+If a file has target-language PGS subs but also has text-based subs in another language, the script will translate the text subs and remove the PGS tracks.
+
+To keep PGS tracks instead, set `remove_bitmap_subs` to `false` in `llm_config.json`:
+
+```json
+"remove_bitmap_subs": false
+```
+
 ### Examples
 
 <details>

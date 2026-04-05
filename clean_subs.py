@@ -180,12 +180,16 @@ def classify_subtitle_tracks(
     streams: list[dict],
     skip_detect: bool = False,
     keep_languages: set[str] | None = None,
+    remove_bitmap: bool = True,
 ) -> tuple[list[dict], list[dict]]:
     """Classify subtitle streams into keep and remove lists.
 
     Args:
         keep_languages: Override the default KEEP_LANGUAGES set.
             When called from translate_subs.py, this is built from config.
+        remove_bitmap: If True, always remove bitmap/PGS subtitle tracks
+            regardless of language. Configurable via remove_bitmap_subs
+            in llm_config.json.
 
     Returns (keep, remove) where each is a list of stream dicts.
     """
@@ -196,7 +200,7 @@ def classify_subtitle_tracks(
 
     sub_streams = [s for s in streams if s.get("codec_type") == "subtitle"]
 
-    # Bitmap subtitle codecs (PGS, DVD subs) — always removed
+    # Bitmap subtitle codecs (PGS, DVD subs)
     bitmap_codecs = {"hdmv_pgs_subtitle", "dvd_subtitle", "xsub"}
 
     for s in sub_streams:
@@ -206,8 +210,8 @@ def classify_subtitle_tracks(
         lang = tags.get("language", "").strip().lower()
         title = tags.get("title", "")
 
-        # Always remove bitmap/PGS tracks regardless of language
-        if codec in bitmap_codecs:
+        # Remove bitmap/PGS tracks when configured (default: yes)
+        if remove_bitmap and codec in bitmap_codecs:
             log.debug("  [REMOVE] idx=%d %s lang=%s (bitmap, incompatible) %s",
                       idx, codec, lang or "???", title)
             remove.append(s)

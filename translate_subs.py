@@ -486,17 +486,19 @@ def run_ffprobe(path: Path) -> list[dict]:
         return []
 
 
-def has_target_embedded(streams: list[dict], target_codes: set[str]) -> bool:
-    """Check if any text-based subtitle stream has a language tag matching the target.
+def has_target_embedded(streams: list[dict], target_codes: set[str],
+                        remove_bitmap: bool = True) -> bool:
+    """Check if any subtitle stream has a language tag matching the target.
 
-    Bitmap formats (PGS, DVD subs) are ignored — they don't count as
-    having the target language, since they're incompatible with most
-    players and will be removed during cleaning.
+    When remove_bitmap is True (default), bitmap formats (PGS, DVD subs)
+    are ignored — they don't count as having the target language, since
+    they'll be removed during cleaning.
     """
     for s in streams:
-        codec = s.get("codec_name", "").lower()
-        if codec in BITMAP_SUB_CODECS:
-            continue
+        if remove_bitmap:
+            codec = s.get("codec_name", "").lower()
+            if codec in BITMAP_SUB_CODECS:
+                continue
         lang = (s.get("tags") or {}).get("language", "").lower()
         if lang in target_codes:
             return True
@@ -923,6 +925,7 @@ def _generate_jobs(
     stats: dict,
     skipped_mkvs: list[Path],
     cache: DirCache | None = None,
+    remove_bitmap: bool = True,
 ) -> Generator[TranslateJob, None, None]:
     """Scan folder, yield translation jobs one at a time as they're found.
 
@@ -998,7 +1001,8 @@ def _generate_jobs(
         streams = run_ffprobe(media)
 
         # Check for target language embedded
-        if has_target_embedded(streams, target_codes):
+        if has_target_embedded(streams, target_codes,
+                               remove_bitmap=remove_bitmap):
             _skip(media, rel, f"{target_lang['name']} embedded",
                   is_has_target=True)
             continue
@@ -1311,7 +1315,8 @@ def _ensure_clean_subs_imported() -> bool:
 
 
 def _clean_single_file(media: Path, rel, stats: dict,
-                       keep_languages: set[str] | None = None) -> None:
+                       keep_languages: set[str] | None = None,
+                       remove_bitmap: bool = True) -> None:
     """Clean unwanted tracks + mux wanted sidecars + delete all sidecars.
 
     Used for skipped files (already have Norwegian) that may still have
@@ -1327,7 +1332,7 @@ def _clean_single_file(media: Path, rel, stats: dict,
 
     _mux_and_clean_single_file(
         media, rel, keep_sidecar=False, skip_clean=False, stats=stats,
-        keep_languages=keep_languages,
+        keep_languages=keep_languages, remove_bitmap=remove_bitmap,
     )
 
 
@@ -1393,6 +1398,7 @@ def _mux_and_clean_single_file(
     media: Path, rel, keep_sidecar: bool, skip_clean: bool,
     stats: dict, sidecar_code: str = "no", mkv_tag: str = "nob",
     target_name: str = "Norwegian", keep_languages: set[str] | None = None,
+    remove_bitmap: bool = True,
 ) -> None:
     """Mux + clean + delete sidecars in ONE remux pass.
 
@@ -1443,7 +1449,8 @@ def _mux_and_clean_single_file(
                            if s.get("codec_type") == "subtitle"]
     else:
         keep, remove = _classify_tracks(media, streams, skip_detect=True,
-                                         keep_languages=langs_to_keep)
+                                         keep_languages=langs_to_keep,
+                                         remove_bitmap=remove_bitmap)
         keep_sub_indices = [s["index"] for s in keep]
         tracks_removed = len(remove)
         if remove:
@@ -1664,6 +1671,7 @@ def _translate_one(
     skip_clean: bool = False,
     keep_sidecar: bool = False,
     target_lang: dict | None = None,
+    remove_bitmap: bool = True,
 ) -> None:
     """Translate a single job, then mux + clean the MKV. Thread-safe."""
     tl = target_lang or {}
@@ -1715,6 +1723,7 @@ def _translate_one(
                 media, rel, keep_sidecar, skip_clean, stats,
                 sidecar_code=sidecar_code, mkv_tag=mkv_tag,
                 target_name=target_name, keep_languages=keep_languages,
+                remove_bitmap=remove_bitmap,
             )
         except Exception as e:
             log.error("[MUX+CLEAN ERROR] %s: %s", rel, e)
@@ -1740,6 +1749,7 @@ def scan_and_translate(
     keep_sidecar: bool = False,
     profile: dict | None = None,
     target_lang: dict | None = None,
+    remove_bitmap: bool = True,
 ) -> dict:
     """Scan folder and translate subtitles using a streaming pipeline.
 
@@ -1777,6 +1787,7 @@ def scan_and_translate(
         stats=stats,
         skipped_mkvs=skipped_mkvs,
         cache=cache,
+        remove_bitmap=remove_bitmap,
     )
 
     if dry_run:
@@ -1798,7 +1809,7 @@ def scan_and_translate(
             future = pool.submit(
                 _translate_one, job, batch_size, stats, profile,
                 skip_clean=skip_clean, keep_sidecar=keep_sidecar,
-                target_lang=target_lang,
+                target_lang=target_lang, remove_bitmap=remove_bitmap,
             )
             futures[future] = job
             submitted += 1
@@ -1827,7 +1838,8 @@ def scan_and_translate(
         for media in skipped_mkvs:
             try:
                 rel = media.relative_to(folder)
-                _clean_single_file(media, rel, stats, keep_languages)
+                _clean_single_file(media, rel, stats, keep_languages,
+                                   remove_bitmap=remove_bitmap)
             except Exception as e:
                 log.error("[CLEAN ERROR] %s: %s", media.name, e)
                 stats["clean_errors"] += 1
@@ -1927,6 +1939,8 @@ def main():
         log.info("Log file:   %s", args.log_file)
 
     start = time.time()
+    remove_bitmap = config.get("remove_bitmap_subs", True)
+
     stats = scan_and_translate(
         folder, batch_size=batch_size, dry_run=args.dry_run,
         parallel=parallel, limit=args.limit, force=args.force,
@@ -1936,6 +1950,7 @@ def main():
         keep_sidecar=args.keep_sidecar,
         profile=profile,
         target_lang=target_lang,
+        remove_bitmap=remove_bitmap,
     )
     elapsed = time.time() - start
 
