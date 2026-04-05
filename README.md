@@ -63,7 +63,29 @@ cp .env.example .env        # edit and add your API key
 
 ## Configuration
 
-All configuration lives in `llm_config.json`. No code changes needed.
+All configuration lives in `llm_config.json`. On first install, copy the example file:
+
+```bash
+cp llm_config.example.json llm_config.json
+```
+
+This file is gitignored — your settings won't be overwritten by updates. Here's the full structure:
+
+```
+llm_config.json
+├── default_profile        Which LLM provider to use (e.g. "deepseek")
+├── remove_bitmap_subs     Remove PGS/DVD bitmap subtitle tracks (true/false)
+├── target_language
+│   ├── name               Language name for the LLM prompt
+│   ├── codes              ISO codes that mean "already translated, skip"
+│   ├── sidecar_code       Output filename code (Movie.XX.srt)
+│   ├── mkv_tag            Language tag when embedding into MKV
+│   └── keep_with          Other languages to keep alongside the target
+├── source_languages       Ordered list of languages to translate FROM
+└── profiles               LLM provider configs (API URL, model, key, tuning)
+```
+
+Each section is explained in detail below.
 
 ### Target Language
 
@@ -158,7 +180,17 @@ When enabled, PGS and DVD subtitle tracks are removed regardless of language, an
 
 ### Source Languages
 
-The `source_languages` list controls which subtitle tracks can be used as a translation source. Languages are tried in priority order — the first match wins. You can add or reorder languages to suit your library.
+The `source_languages` list controls which subtitle tracks are preferred as a translation source. Languages are tried in priority order — the first match wins:
+
+```json
+"source_languages": [
+  {"codes": ["en", "eng"], "name": "English"},
+  {"codes": ["da", "dan"], "name": "Danish"},
+  {"codes": ["sv", "swe"], "name": "Swedish"}
+]
+```
+
+Add, remove, or reorder languages to match your library. If none of these are found, the script falls back to any available subtitle in any language (see "How It Works" below).
 
 ### LLM Profiles
 
