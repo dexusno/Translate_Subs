@@ -1,6 +1,6 @@
 {
   "default_profile": "deepseek",
-  "remove_bitmap_subs": true,
+  "remove_bitmap_subs": false,
   "target_language": {
     "name": "Norwegian",
     "codes": ["no", "nor", "nob", "nb", "nno"],

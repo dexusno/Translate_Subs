@@ -144,9 +144,23 @@ elif [[ -f "$ENV_EXAMPLE" ]]; then
     echo "  [OK] Created .env from .env.example"
     echo ""
     echo "  !! Edit .env and add your API key for your chosen provider."
-    echo "     See llm_config.json for available profiles."
 else
     echo "  [WARNING] .env.example not found - create .env manually."
+fi
+
+# ── Set up llm_config.json ───────────────────────────────────────────────────
+
+LLM_CONFIG="$SCRIPT_DIR/llm_config.json"
+LLM_EXAMPLE="$SCRIPT_DIR/llm_config.example.json"
+
+if [[ -f "$LLM_CONFIG" ]]; then
+    echo "  [OK] llm_config.json already exists (not overwriting)"
+elif [[ -f "$LLM_EXAMPLE" ]]; then
+    cp "$LLM_EXAMPLE" "$LLM_CONFIG"
+    echo "  [OK] Created llm_config.json from example"
+    echo "     Edit llm_config.json to configure target language and profiles."
+else
+    echo "  [WARNING] llm_config.example.json not found."
 fi
 
 # ── Make bash wrappers executable ────────────────────────────────────────────

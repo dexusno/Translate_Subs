@@ -171,9 +171,23 @@ if (Test-Path -LiteralPath $envFile) {
     Write-Host "  [OK] Created .env from .env.example" -ForegroundColor Green
     Write-Host ""
     Write-Host "  !! Edit .env and add your API key for your chosen provider." -ForegroundColor Yellow
-    Write-Host "     See llm_config.json for available profiles." -ForegroundColor Yellow
 } else {
     Write-Host "  [WARNING] .env.example not found - create .env manually." -ForegroundColor Yellow
+}
+
+# ── Set up llm_config.json ───────────────────────────────────────────────────
+
+$llmConfig = Join-Path $scriptDir "llm_config.json"
+$llmExample = Join-Path $scriptDir "llm_config.example.json"
+
+if (Test-Path -LiteralPath $llmConfig) {
+    Write-Host "  [OK] llm_config.json already exists (not overwriting)" -ForegroundColor Green
+} elseif (Test-Path -LiteralPath $llmExample) {
+    Copy-Item -LiteralPath $llmExample -Destination $llmConfig
+    Write-Host "  [OK] Created llm_config.json from example" -ForegroundColor Green
+    Write-Host "     Edit llm_config.json to configure target language and profiles." -ForegroundColor Yellow
+} else {
+    Write-Host "  [WARNING] llm_config.example.json not found." -ForegroundColor Yellow
 }
 
 # ── Update PowerShell wrappers with detected Python path ─────────────────────

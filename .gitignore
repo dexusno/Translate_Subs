@@ -1,6 +1,7 @@
 # Environment / secrets
 .env
 media_roots.conf
+llm_config.json
 
 # Python
 __pycache__/
