@@ -106,6 +106,29 @@ if [[ -z "$FULL_PATH" ]]; then
     exit 1
 fi
 
+# -- Pick season (if applicable) -----------------------------------------------
+
+SEASON_DIRS=""
+while IFS= read -r -d '' dir; do
+    SEASON_DIRS+="$(basename "$dir")"$'\n'
+done < <(find "$FULL_PATH" -mindepth 1 -maxdepth 1 -type d -name "Season*" -print0 | sort -z)
+
+if [[ -n "$SEASON_DIRS" ]]; then
+    SEASON_LIST="[All seasons]"$'\n'"$SEASON_DIRS"
+
+    PICKED_SEASON=$(echo "$SEASON_LIST" | fzf \
+        --header="$PICKED_FOLDER_NAME — pick a season or all" \
+        --height=30% \
+        --reverse \
+        --no-mouse \
+        --prompt="  > " \
+    ) || { echo "  Cancelled."; exit 0; }
+
+    if [[ "$PICKED_SEASON" != "[All seasons]" ]]; then
+        FULL_PATH="$FULL_PATH/$PICKED_SEASON"
+    fi
+fi
+
 # -- Pick action ---------------------------------------------------------------
 
 ACTION=$(printf '%s\n' \
