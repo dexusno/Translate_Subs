@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Features
+
+- **Configurable PGS/bitmap subtitle removal** — new `remove_bitmap_subs` setting in `llm_config.json`. When enabled (default for our setup), PGS and DVD subtitle tracks are always removed and ignored when checking for existing target language subs. Text-based subs (SRT) are preferred for translation. Set to `false` to keep PGS tracks.
+- **DeepSeek recommended** as default provider in README with real-world cost breakdown (~1 cent per episode).
+
+### Changes
+
+- **`llm_config.json` is now gitignored** — local settings are no longer overwritten by `git pull`. New installs get `llm_config.example.json` copied automatically, with `remove_bitmap_subs: false` as the safe default.
+
+---
+
 ## v1.1.2 — 2026-04-04
 
 ### Features
