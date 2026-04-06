@@ -1027,7 +1027,7 @@ def _generate_jobs(
 
         # Check for target language embedded
         if has_target_embedded(streams, target_codes,
-                               remove_bitmap=remove_bitmap):
+                               remove_bitmap=remove_bitmap) and not force:
             _skip(media, rel, f"{target_lang['name']} embedded",
                   is_has_target=True)
             continue
