@@ -339,6 +339,14 @@ def _llm_translate_batched(
                 total_usage[k] += usage.get(k, 0)
 
             translated_text = data["choices"][0]["message"]["content"].strip()
+            finish_reason = (data.get("choices", [{}])[0]
+                            .get("finish_reason", ""))
+
+            if finish_reason == "length":
+                log.warning("  Batch %d-%d: response truncated "
+                            "(finish_reason=length), output may be "
+                            "incomplete",
+                            i, i + len(batch))
 
             # Parse [N] markers from response
             results = {}
@@ -352,38 +360,80 @@ def _llm_translate_batched(
             batch_results = [results.get(j, batch[j]) for j in range(len(batch))]
 
             # Verify translation actually happened.
-            # Check for consecutive identical lines — a run of 5+ unchanged
-            # lines means the LLM stopped translating mid-batch. Isolated
-            # identical lines are normal (proper nouns, "OK", sound effects).
+            # Find where the translation stopped — first run of 5+ consecutive
+            # unchanged lines indicates the LLM stopped translating.
+            fail_start = -1
             if len(batch) >= 6:
-                max_run = 0
                 current_run = 0
-                for src, dst in zip(batch, batch_results):
+                for k, (src, dst) in enumerate(zip(batch, batch_results)):
                     if src.strip().lower() == dst.strip().lower():
                         current_run += 1
-                        max_run = max(max_run, current_run)
+                        if current_run >= 5 and fail_start < 0:
+                            fail_start = k - current_run + 1
                     else:
                         current_run = 0
 
-                if max_run >= 5:
-                    total_identical = sum(
-                        1 for src, dst in zip(batch, batch_results)
-                        if src.strip().lower() == dst.strip().lower()
+            if fail_start >= 0 and attempt < max_retries:
+                # Keep the good part, resend only the failed tail
+                good_count = fail_start
+                fail_count = len(batch) - fail_start
+                log.warning("  Batch %d-%d: translation stopped at "
+                            "line %d, resending last %d lines...",
+                            i, i + len(batch), fail_start, fail_count)
+
+                # Resend just the failed portion as a smaller batch
+                fail_batch = batch[fail_start:]
+                fail_numbered = [f"[{j}] {line}"
+                                 for j, line in enumerate(fail_batch)]
+                fail_msg = "\n".join(fail_numbered)
+
+                try:
+                    resp2 = requests.post(
+                        api_url, headers=headers,
+                        json={
+                            "model": model,
+                            "messages": [
+                                {"role": "system", "content": system_prompt},
+                                {"role": "user", "content": fail_msg},
+                            ],
+                            "temperature": 0.3,
+                        },
+                        timeout=api_timeout,
                     )
-                    if attempt < max_retries:
-                        log.warning("  Batch %d-%d: %d consecutive "
-                                    "unchanged lines (%d/%d total), "
-                                    "retrying...",
-                                    i, i + len(batch), max_run,
-                                    total_identical, len(batch))
-                        continue
-                    else:
-                        log.warning("  Batch %d-%d: %d consecutive "
-                                    "unchanged lines (%d/%d total) "
-                                    "after retry, accepting result",
-                                    i, i + len(batch), max_run,
-                                    total_identical, len(batch))
-            break  # translation looks good, move on
+                    resp2.raise_for_status()
+                    data2 = resp2.json()
+
+                    usage2 = data2.get("usage", {})
+                    for k2 in total_usage:
+                        total_usage[k2] += usage2.get(k2, 0)
+
+                    text2 = data2["choices"][0]["message"]["content"].strip()
+                    results2 = {}
+                    for match in re.finditer(
+                        r"\[(\d+)\]\s*(.*?)(?=\n\[\d+\]|\Z)", text2, re.DOTALL
+                    ):
+                        idx2 = int(match.group(1))
+                        txt2 = match.group(2).strip()
+                        results2[idx2] = txt2
+
+                    # Patch the failed portion into batch_results
+                    for j in range(len(fail_batch)):
+                        if j in results2:
+                            batch_results[fail_start + j] = results2[j]
+
+                    log.info("  Batch %d-%d: recovered %d/%d failed lines",
+                             i, i + len(batch),
+                             len(results2), fail_count)
+                except Exception as e:
+                    log.warning("  Batch %d-%d: recovery failed: %s",
+                                i, i + len(batch), e)
+
+            elif fail_start >= 0:
+                fail_count = len(batch) - fail_start
+                log.warning("  Batch %d-%d: %d lines untranslated "
+                            "from line %d, no retries left",
+                            i, i + len(batch), fail_count, fail_start)
+            break  # done with this batch
 
         out_texts.extend(batch_results)
 
