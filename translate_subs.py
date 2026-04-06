@@ -351,24 +351,38 @@ def _llm_translate_batched(
 
             batch_results = [results.get(j, batch[j]) for j in range(len(batch))]
 
-            # Verify translation actually happened — compare output to input.
-            # If more than half the lines are identical, the batch likely
-            # came back untranslated. Retry once.
-            if len(batch) >= 4:
-                identical = sum(
-                    1 for src, dst in zip(batch, batch_results)
-                    if src.strip().lower() == dst.strip().lower()
-                )
-                if identical > len(batch) * 0.5:
+            # Verify translation actually happened.
+            # Check for consecutive identical lines — a run of 5+ unchanged
+            # lines means the LLM stopped translating mid-batch. Isolated
+            # identical lines are normal (proper nouns, "OK", sound effects).
+            if len(batch) >= 6:
+                max_run = 0
+                current_run = 0
+                for src, dst in zip(batch, batch_results):
+                    if src.strip().lower() == dst.strip().lower():
+                        current_run += 1
+                        max_run = max(max_run, current_run)
+                    else:
+                        current_run = 0
+
+                if max_run >= 5:
+                    total_identical = sum(
+                        1 for src, dst in zip(batch, batch_results)
+                        if src.strip().lower() == dst.strip().lower()
+                    )
                     if attempt < max_retries:
-                        log.warning("  Batch %d-%d: %d/%d lines unchanged, "
+                        log.warning("  Batch %d-%d: %d consecutive "
+                                    "unchanged lines (%d/%d total), "
                                     "retrying...",
-                                    i, i + len(batch), identical, len(batch))
+                                    i, i + len(batch), max_run,
+                                    total_identical, len(batch))
                         continue
                     else:
-                        log.warning("  Batch %d-%d: %d/%d lines unchanged "
+                        log.warning("  Batch %d-%d: %d consecutive "
+                                    "unchanged lines (%d/%d total) "
                                     "after retry, accepting result",
-                                    i, i + len(batch), identical, len(batch))
+                                    i, i + len(batch), max_run,
+                                    total_identical, len(batch))
             break  # translation looks good, move on
 
         out_texts.extend(batch_results)
