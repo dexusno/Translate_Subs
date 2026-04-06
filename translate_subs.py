@@ -551,6 +551,33 @@ def translate_srt(
         for li, part in zip(idxs, parts):
             blocks[bi][li] = part
 
+    # Reflow: cap subtitle cues at 2 text lines maximum.
+    # Join 3+ line cues into one string, then split into 2 balanced lines.
+    MAX_SUB_LINES = 2
+    for bi, block in enumerate(blocks):
+        text_idxs = [
+            li for li, line in enumerate(block)
+            if not _is_index_line(line) and not _is_time_line(line)
+            and line is not None and line.strip()
+        ]
+        if len(text_idxs) <= MAX_SUB_LINES:
+            continue
+
+        # Merge all text lines, then reflow to 2 balanced lines
+        merged = " ".join(block[li].strip() for li in text_idxs)
+        new_lines = _split_to_n_lines_preserving_words(merged, MAX_SUB_LINES)
+
+        # Write the 2 new lines into the first 2 text slots, clear the rest
+        for j, li in enumerate(text_idxs):
+            if j < MAX_SUB_LINES:
+                block[li] = new_lines[j]
+            else:
+                block[li] = ""
+
+        # Remove empty lines from the block
+        blocks[bi] = [line for line in block if line.strip() != ""
+                      or _is_time_line(line)]
+
     return _join_srt(blocks)
 
 
