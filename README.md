@@ -330,7 +330,8 @@ For each video file:
 3. **Detect untagged tracks** — if an embedded subtitle track has no language tag, a small sample is extracted and sent to the LLM for identification. The track is then tagged in the MKV.
 4. **Fallback** — if no subtitle in the priority list is found, the script falls back to any available subtitle in any language — embedded tracks, external files, anything it can read. The LLM can translate from virtually any language, so even a Romanian or Polish subtitle is better than nothing. Fallback usage is logged as `[FALLBACK]` for easy review.
 5. **Translate** — the subtitle text is sent to the LLM in batches. The response is reassembled into a properly formatted `.srt` file.
-6. **Embed + clean** — in a single remux pass: the translated subs are embedded, any wanted-language external files are embedded, unwanted tracks are removed, and external subtitle files are cleaned up.
+6. **Reflow** — any subtitle cues with 3 or more lines are reflowed to a maximum of 2 balanced lines. All text is preserved, only the line break positions change.
+7. **Embed + clean** — in a single remux pass: the translated subs are embedded, any wanted-language external files are embedded, unwanted tracks are removed, and external subtitle files are cleaned up.
 
 Translation starts as soon as the first file is ready — the scanning and translating phases overlap, so you don't wait for the entire library to be scanned before work begins.
 
