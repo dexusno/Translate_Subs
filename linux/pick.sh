@@ -133,6 +133,7 @@ fi
 
 ACTION=$(printf '%s\n' \
     "translate        Translate subtitles" \
+    "translate-force  Translate (force retranslate)" \
     "translate-dry    Translate (dry-run preview)" \
     "clean            Clean unwanted subtitle tracks" \
     "clean-dry        Clean (dry-run preview)" \
@@ -159,6 +160,9 @@ echo ""
 case "$ACTION_KEY" in
     translate)
         exec "$SCRIPT_DIR/translate_subs.sh" "$FULL_PATH"
+        ;;
+    translate-force)
+        exec "$SCRIPT_DIR/translate_subs.sh" "$FULL_PATH" --force
         ;;
     translate-dry)
         exec "$SCRIPT_DIR/translate_subs.sh" "$FULL_PATH" --dry-run
