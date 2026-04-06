@@ -330,6 +330,7 @@ def _llm_translate_batched(
                         {"role": "user", "content": user_msg},
                     ],
                     "temperature": 0.3,
+                    "max_tokens": 16384,
                 },
                 timeout=api_timeout,
             )
@@ -400,6 +401,7 @@ def _llm_translate_batched(
                                 {"role": "user", "content": fail_msg},
                             ],
                             "temperature": 0.3,
+                            "max_tokens": 16384,
                         },
                         timeout=api_timeout,
                     )
