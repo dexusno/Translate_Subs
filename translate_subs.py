@@ -7,7 +7,7 @@ llm_config.json next to this script.
 
 Usage:
     python translate_subs.py "D:\\Movies\\Some Movie"
-    python translate_subs.py --batch-size 350 --parallel 8 --dry-run "/mnt/media/Tv/Ugly Betty"
+    python translate_subs.py --batch-size 200 --parallel 8 --dry-run "/mnt/media/Tv/Ugly Betty"
     python translate_subs.py --profile openai "D:\\TvSeries\\Breaking Bad"
 """
 
@@ -84,7 +84,7 @@ def resolve_profile(config: dict, profile_name: str | None) -> dict:
         "model": p["model"],
         "api_key": api_key,
         "timeout": p.get("timeout", 120),
-        "batch_size": p.get("batch_size", 350),
+        "batch_size": p.get("batch_size", 200),
         "parallel": p.get("parallel", 3),
     }
 
@@ -330,7 +330,7 @@ def _llm_translate_batched(
                         {"role": "user", "content": user_msg},
                     ],
                     "temperature": 0.3,
-                    "max_tokens": 16384,
+                    "max_tokens": 8192,
                 },
                 timeout=api_timeout,
             )
@@ -401,7 +401,7 @@ def _llm_translate_batched(
                                 {"role": "user", "content": fail_msg},
                             ],
                             "temperature": 0.3,
-                            "max_tokens": 16384,
+                            "max_tokens": 8192,
                         },
                         timeout=api_timeout,
                     )
@@ -1851,7 +1851,7 @@ def _translate_one(
 
 def scan_and_translate(
     folder: Path,
-    batch_size: int = 350,
+    batch_size: int = 200,
     dry_run: bool = False,
     parallel: int = 1,
     limit: int = 0,
@@ -1980,7 +1980,7 @@ def main():
     )
     parser.add_argument("folder", help="Path to folder to scan recursively")
     parser.add_argument("--batch-size", type=int, default=None,
-                        help="Subtitle groups per LLM API call (default: from profile or 350)")
+                        help="Subtitle groups per LLM API call (default: from profile or 200)")
     parser.add_argument("--parallel", type=int, default=None,
                         help="Number of files to translate concurrently (default: from profile or 3)")
     parser.add_argument("--limit", type=int, default=0,
