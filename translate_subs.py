@@ -307,46 +307,71 @@ def _llm_translate_batched(
     if api_key and api_key.lower() != "none":
         headers["Authorization"] = f"Bearer {api_key}"
 
+    max_retries = 1  # retry once if batch comes back untranslated
+
     for i in range(0, total, max(1, batch_size)):
         batch = prepped[i : i + batch_size]
 
         numbered = [f"[{j}] {line}" for j, line in enumerate(batch)]
         user_msg = "\n".join(numbered)
 
-        resp = requests.post(
-            api_url,
-            headers=headers,
-            json={
-                "model": model,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_msg},
-                ],
-                "temperature": 0.3,
-            },
-            timeout=api_timeout,
-        )
-        resp.raise_for_status()
-        data = resp.json()
+        batch_results: list[str] = []
+        for attempt in range(1 + max_retries):
+            resp = requests.post(
+                api_url,
+                headers=headers,
+                json={
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_msg},
+                    ],
+                    "temperature": 0.3,
+                },
+                timeout=api_timeout,
+            )
+            resp.raise_for_status()
+            data = resp.json()
 
-        # Accumulate usage
-        usage = data.get("usage", {})
-        for k in total_usage:
-            total_usage[k] += usage.get(k, 0)
+            # Accumulate usage
+            usage = data.get("usage", {})
+            for k in total_usage:
+                total_usage[k] += usage.get(k, 0)
 
-        translated_text = data["choices"][0]["message"]["content"].strip()
+            translated_text = data["choices"][0]["message"]["content"].strip()
 
-        # Parse [N] markers from response
-        results = {}
-        for match in re.finditer(
-            r"\[(\d+)\]\s*(.*?)(?=\n\[\d+\]|\Z)", translated_text, re.DOTALL
-        ):
-            idx = int(match.group(1))
-            text = match.group(2).strip()
-            results[idx] = text
+            # Parse [N] markers from response
+            results = {}
+            for match in re.finditer(
+                r"\[(\d+)\]\s*(.*?)(?=\n\[\d+\]|\Z)", translated_text, re.DOTALL
+            ):
+                idx = int(match.group(1))
+                text = match.group(2).strip()
+                results[idx] = text
 
-        for j in range(len(batch)):
-            out_texts.append(results.get(j, batch[j]))
+            batch_results = [results.get(j, batch[j]) for j in range(len(batch))]
+
+            # Verify translation actually happened — compare output to input.
+            # If more than half the lines are identical, the batch likely
+            # came back untranslated. Retry once.
+            if len(batch) >= 4:
+                identical = sum(
+                    1 for src, dst in zip(batch, batch_results)
+                    if src.strip().lower() == dst.strip().lower()
+                )
+                if identical > len(batch) * 0.5:
+                    if attempt < max_retries:
+                        log.warning("  Batch %d-%d: %d/%d lines unchanged, "
+                                    "retrying...",
+                                    i, i + len(batch), identical, len(batch))
+                        continue
+                    else:
+                        log.warning("  Batch %d-%d: %d/%d lines unchanged "
+                                    "after retry, accepting result",
+                                    i, i + len(batch), identical, len(batch))
+            break  # translation looks good, move on
+
+        out_texts.extend(batch_results)
 
         done = min(total, done + len(batch))
         if progress_cb:
