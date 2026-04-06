@@ -226,7 +226,7 @@ Each profile can include performance settings. Cloud APIs handle large batches a
 
 ```json
 "deepseek": {
-  "batch_size": 500,
+  "batch_size": 350,
   "parallel": 8
 },
 "local": {
@@ -238,7 +238,7 @@ Each profile can include performance settings. Cloud APIs handle large batches a
 
 | Setting | What it does | Cloud default | Local default |
 |---------|-------------|---------------|---------------|
-| `batch_size` | Subtitle groups per API call | 500 | 25 |
+| `batch_size` | Subtitle groups per API call | 350 | 25 |
 | `parallel` | Files translated concurrently | 8 | 1 |
 | `timeout` | Seconds before an API call times out | 120 | 600 |
 
@@ -371,7 +371,7 @@ Media/              # point here to process everything
 
 **Python packages not found (Linux)** — the Linux scripts use a virtual environment at `.venv/`. Re-run `./linux/install.sh` or manually install: `.venv/bin/pip install requests python-dotenv`.
 
-**API timeout** — if translations time out on large files, reduce `--batch-size` (default 500) or increase the `timeout` in your profile config.
+**API timeout** — if translations time out on large files, reduce `--batch-size` (default 350) or increase the `timeout` in your profile config.
 
 **Safe to re-run** — already translated files are skipped. Partially translated files (interrupted mid-write) are retranslated. You can stop and resume at any time.
 
