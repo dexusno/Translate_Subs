@@ -253,14 +253,17 @@ def _build_system_prompt(source_lang: str, target_name: str) -> str:
     """Build the translation system prompt for the given source and target languages."""
     return (
         f"/no_think\n"
-        f"You are a professional subtitle translator. "
-        f"Translate the following {source_lang} subtitle lines to {target_name}. "
-        f"Each line is prefixed with [N] where N is the line number. "
-        f"Return each translated line prefixed with the SAME [N] marker. "
-        f"Preserve any __NL__ markers exactly as they appear — do not translate or remove them. "
-        f"Preserve any __TAG0__, __TAG1__ etc. placeholders exactly. "
-        f"Keep sound effects in ALL CAPS (e.g. ENGINE ROARS → MOTOREN BRØLER). "
-        f"Do not add any explanations, only the numbered translated lines."
+        f"You are a subtitle translator. Your ONLY task is to translate "
+        f"{source_lang} subtitle lines into {target_name}.\n\n"
+        f"RULES — follow these exactly, no exceptions:\n"
+        f"1. Every input line starts with [N]. Output MUST have the same [N] marker.\n"
+        f"2. Translate ALL lines. Do NOT skip any. Do NOT stop early. "
+        f"Do NOT output the original {source_lang} text.\n"
+        f"3. Preserve __NL__ markers exactly as they appear.\n"
+        f"4. Preserve __TAG0__, __TAG1__ etc. placeholders exactly.\n"
+        f"5. Keep sound effects in ALL CAPS (e.g. ENGINE ROARS → MOTOREN BRØLER).\n"
+        f"6. Output ONLY the translated numbered lines. No explanations, "
+        f"no commentary, no notes."
     )
 
 
