@@ -1,15 +1,29 @@
 # Changelog
 
-## Unreleased
+## v1.2.0 — 2026-04-06
 
 ### Features
 
-- **Configurable PGS/bitmap subtitle removal** — new `remove_bitmap_subs` setting in `llm_config.json`. When enabled (default for our setup), PGS and DVD subtitle tracks are always removed and ignored when checking for existing target language subs. Text-based subs (SRT) are preferred for translation. Set to `false` to keep PGS tracks.
+- **Smart batch retry** — when the LLM stops translating mid-batch, the script detects exactly where it stopped, keeps the good lines, and resends only the failed portion as a smaller request. No more half-translated episodes.
+- **Translation verification** — after each batch, checks for consecutive unchanged lines to catch partial translation failures automatically.
+- **Stricter translation prompt** — rewritten with numbered rules and explicit instructions ("Do NOT skip any. Do NOT stop early.") to improve LLM compliance on long batches.
+- **Season picker in pick.sh** — after selecting a TV series, choose a specific season or all seasons.
+- **Force retranslate in pick.sh** — new action option for retranslating files that already have target language subs.
+- **Configurable PGS/bitmap subtitle removal** — new `remove_bitmap_subs` setting in `llm_config.json`. Set to `true` to remove PGS/DVD bitmap subtitle tracks. Default: `false` (safe default for new users).
 - **DeepSeek recommended** as default provider in README with real-world cost breakdown (~1 cent per episode).
+
+### Bug Fixes
+
+- **Fixed output truncation** — DeepSeek `deepseek-chat` has an 8K max output token limit. We now set `max_tokens=8192` explicitly (API defaults to 4K if not specified). This was causing batches to silently cut off around line 190.
+- **Lowered default batch_size to 200** — ensures each batch stays well within the 8K output token limit, preventing truncation without needing retries.
+- **Fixed `--force` flag** — now properly bypasses embedded target language checks AND replaces the old embedded track with the new translation during muxing. Previously, force mode would translate but skip the mux step.
+- **Fixed `finish_reason=length` detection** — logs a warning when the API response is truncated, so the issue is visible in logs.
 
 ### Changes
 
-- **`llm_config.json` is now gitignored** — local settings are no longer overwritten by `git pull`. New installs get `llm_config.example.json` copied automatically, with `remove_bitmap_subs: false` as the safe default.
+- **`llm_config.json` is now gitignored** — local settings are no longer overwritten by `git pull`. New installs get `llm_config.example.json` copied automatically.
+
+---
 
 ---
 

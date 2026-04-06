@@ -373,6 +373,8 @@ Media/              # point here to process everything
 
 **API timeout** — if translations time out on large files, reduce `--batch-size` (default 200) or increase the `timeout` in your profile config.
 
+**Partially translated episodes** — if subtitles switch from your target language back to the source language mid-episode, the batch size may be too large for your LLM provider's output token limit. DeepSeek `deepseek-chat` has an 8K output token limit. The default `batch_size` of 200 is tuned to stay within this. If you see `finish_reason=length` warnings in the log, lower the batch size further. The script automatically detects and retries failed portions, but smaller batches prevent the issue entirely.
+
 **Safe to re-run** — already translated files are skipped. Partially translated files (interrupted mid-write) are retranslated. You can stop and resume at any time.
 
 ## Disclaimer
