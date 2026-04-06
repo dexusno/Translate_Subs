@@ -1437,7 +1437,7 @@ def _mux_and_clean_single_file(
     media: Path, rel, keep_sidecar: bool, skip_clean: bool,
     stats: dict, sidecar_code: str = "no", mkv_tag: str = "nob",
     target_name: str = "Norwegian", keep_languages: set[str] | None = None,
-    remove_bitmap: bool = True,
+    remove_bitmap: bool = True, force: bool = False,
 ) -> None:
     """Mux + clean + delete sidecars in ONE remux pass.
 
@@ -1531,10 +1531,28 @@ def _mux_and_clean_single_file(
         mkv_tag_for_lang = _SIDECAR_MKV_TAGS.get(lang, lang)
         already_embedded = lang in embedded_langs or mkv_tag_for_lang in embedded_langs
 
-        if already_embedded:
+        if already_embedded and not force:
             # Already inside the MKV — safe to delete the redundant sidecar
             sidecars_to_delete.append(sc)
             log.debug("[MUX+CLEAN] Sidecar redundant (embedded): %s", sc.name)
+        elif already_embedded and force:
+            # Force mode — replace the old embedded track with the new sidecar.
+            # Remove the old track from keep list so it gets dropped in the remux.
+            keep_sub_indices = [
+                idx for idx in keep_sub_indices
+                if not any(
+                    s["index"] == idx
+                    and (s.get("tags") or {}).get("language", "").lower()
+                        in (lang, mkv_tag_for_lang)
+                    for s in streams
+                )
+            ]
+            sidecars_to_mux.append((sc, lang, mkv_tag_for_lang))
+            sidecars_to_delete.append(sc)
+            embedded_langs.add(lang)
+            embedded_langs.add(mkv_tag_for_lang)
+            log.debug("[MUX+CLEAN] Force replacing embedded %s: %s",
+                      lang, sc.name)
         else:
             # Not embedded — mux it in, then delete
             sidecars_to_mux.append((sc, lang, mkv_tag_for_lang))
@@ -1711,6 +1729,7 @@ def _translate_one(
     keep_sidecar: bool = False,
     target_lang: dict | None = None,
     remove_bitmap: bool = True,
+    force: bool = False,
 ) -> None:
     """Translate a single job, then mux + clean the MKV. Thread-safe."""
     tl = target_lang or {}
@@ -1762,7 +1781,7 @@ def _translate_one(
                 media, rel, keep_sidecar, skip_clean, stats,
                 sidecar_code=sidecar_code, mkv_tag=mkv_tag,
                 target_name=target_name, keep_languages=keep_languages,
-                remove_bitmap=remove_bitmap,
+                remove_bitmap=remove_bitmap, force=force,
             )
         except Exception as e:
             log.error("[MUX+CLEAN ERROR] %s: %s", rel, e)
@@ -1849,6 +1868,7 @@ def scan_and_translate(
                 _translate_one, job, batch_size, stats, profile,
                 skip_clean=skip_clean, keep_sidecar=keep_sidecar,
                 target_lang=target_lang, remove_bitmap=remove_bitmap,
+                force=force,
             )
             futures[future] = job
             submitted += 1
