@@ -249,8 +249,13 @@ def _split_to_n_lines_preserving_words(
 _SENTINEL = "__NL__"
 
 
-def _build_system_prompt(source_lang: str, target_name: str) -> str:
-    """Build the translation system prompt for the given source and target languages."""
+def _build_system_prompt_v1(source_lang: str, target_name: str) -> str:
+    """Original working prompt (v1.2.0). Kept as fallback.
+
+    Produced excellent translation quality. Issue was partial failures —
+    the LLM sometimes stopped translating mid-batch. Retry mechanism
+    handled it but slowed things down.
+    """
     return (
         f"/no_think\n"
         f"You are a subtitle translator. Your ONLY task is to translate "
@@ -264,6 +269,43 @@ def _build_system_prompt(source_lang: str, target_name: str) -> str:
         f"5. Keep sound effects in ALL CAPS (e.g. ENGINE ROARS → MOTOREN BRØLER).\n"
         f"6. Output ONLY the translated numbered lines. No explanations, "
         f"no commentary, no notes."
+    )
+
+
+def _build_system_prompt(source_lang: str, target_name: str) -> str:
+    """Build the translation system prompt.
+
+    v2 prompt: structured with a concrete example, explicit line count
+    requirement, and instructions repeated at the end (primacy + recency).
+    Based on research from established subtitle translation projects
+    (llm-subtrans) and DeepSeek's official translation guidance.
+    """
+    return (
+        f"/no_think\n"
+        f"You are a subtitle translator. Translate {source_lang} subtitle "
+        f"lines into {target_name}.\n\n"
+        f"CRITICAL: You MUST output EXACTLY the same number of [N] lines "
+        f"as the input. Do NOT skip, merge, or add lines. Do NOT stop "
+        f"until every line is translated.\n\n"
+        f"FORMAT:\n"
+        f"Input:  [0] Original line\n"
+        f"Output: [0] Translated line\n\n"
+        f"EXAMPLE — input:\n"
+        f"[0] Hello, how are you?\n"
+        f"[1] I'm fine, thanks.\n"
+        f"[2] Let's go to the market.\n\n"
+        f"EXAMPLE — correct output:\n"
+        f"[0] Hei, hvordan har du det?\n"
+        f"[1] Jeg har det bra, takk.\n"
+        f"[2] La oss gå til markedet.\n\n"
+        f"RULES:\n"
+        f"1. Translate every [N] line to {target_name}.\n"
+        f"2. Keep the [N] marker identical on each output line.\n"
+        f"3. Preserve __NL__, __TAG0__, __TAG1__ etc. placeholders exactly.\n"
+        f"4. Keep sound effects in ALL CAPS.\n"
+        f"5. Output ONLY numbered lines — no commentary, no notes.\n\n"
+        f"Now translate the following lines. Output EVERY line from [0] "
+        f"to the last [N]. Do not stop early."
     )
 
 
@@ -329,7 +371,7 @@ def _llm_translate_batched(
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_msg},
                     ],
-                    "temperature": 0.3,
+                    "temperature": 1.3,
                     "max_tokens": 8192,
                 },
                 timeout=api_timeout,
@@ -400,7 +442,7 @@ def _llm_translate_batched(
                                 {"role": "system", "content": system_prompt},
                                 {"role": "user", "content": fail_msg},
                             ],
-                            "temperature": 0.3,
+                            "temperature": 1.3,
                             "max_tokens": 8192,
                         },
                         timeout=api_timeout,
