@@ -30,6 +30,7 @@ The result is subtitles that read like they were written by a native speaker, at
 - [Usage](#usage)
 - [Scripts](#scripts)
 - [Supported File Formats](#supported-file-formats)
+- [Under the Hood](#under-the-hood)
 - [Troubleshooting](#troubleshooting)
 - [Disclaimer](#disclaimer)
 - [License](#license)
@@ -542,6 +543,175 @@ Media/              # point here to process everything
   TvSeries/
   Documentaries/
 ```
+
+---
+
+## Under the Hood
+
+<details>
+<summary><strong>Click to expand — explains the engineering decisions behind the pipeline</strong></summary>
+
+### Streaming pipeline
+
+Early versions did a two-phase approach: scan the entire folder tree, collect all jobs, then translate. This worked fine on local disks but was painfully slow over VPN/network paths — scanning a season folder could take minutes before any translation started.
+
+The current implementation uses a **producer-consumer pipeline**. The scanner is a generator that yields jobs one at a time as they're found. Translation workers pull from the pipeline and start immediately. Scanning and translating overlap completely.
+
+```python
+def _generate_jobs(folder) -> Generator[Job, None, None]:
+    for media in folder.rglob("*"):
+        job = analyze(media)
+        if job:
+            yield job   # translator starts working immediately
+
+with ThreadPoolExecutor(max_workers=8) as pool:
+    for job in _generate_jobs(folder):
+        pool.submit(_translate_one, job)
+```
+
+The first translation typically starts within 1-2 seconds of launching the script, even on a 500-episode library.
+
+### Directory cache
+
+Checking if a file already has a `.no.srt` sidecar means calling `Path.exists()` — which is a network round-trip over SMB. With multiple language code variants (`.no.srt`, `.nor.srt`, `.nob.srt`, `.nb.srt`) and the `.sdh`/`.hi`/`.forced` suffixes to consider, every video file could trigger 20+ network round-trips.
+
+Instead, we do one `rglob("*")` pass at startup to build a `set` of every path in the tree. All subsequent existence checks become O(1) `in` operations with zero network traffic.
+
+```python
+class DirCache:
+    def __init__(self, root: Path):
+        self._files = set()
+        for p in root.rglob("*"):
+            self._files.add(p)
+
+    def exists(self, path: Path) -> bool:
+        return path in self._files
+```
+
+On a 500-file library over VPN, this cut the scan phase from several minutes to under 2 seconds.
+
+### One-pass mux + clean
+
+Older versions ran two separate ffmpeg operations per file:
+
+1. **Mux pass:** embed the translated `.srt` into the MKV
+2. **Clean pass:** remux again to remove unwanted subtitle tracks
+
+Each remux reads and writes the entire MKV file. On a 3 GB file over a 100 Mbps connection, that's 4-5 minutes of pure I/O — doubled for the two passes.
+
+The current implementation merges both operations into a **single ffmpeg call** using explicit stream mapping. The command:
+- Maps all video + audio streams (`-map 0:v -map 0:a`)
+- Maps only the wanted embedded subtitle tracks by index
+- Adds the new translated `.srt` as a second input (`-i new.srt -map 1:0`)
+- Sets language metadata on the new track
+- Also maps any external wanted-language `.srt` files (`.en.srt`, `.da.srt`, etc.) that aren't already embedded
+
+One read, one write, done. Half the I/O of the old approach — which matters enormously over the network.
+
+### Self-healing translation retry
+
+Cloud LLMs occasionally fail partway through a batch. Before our detection logic, this meant episodes where the translation would suddenly switch back to English halfway through. The failure was silent — nothing in the API response indicated a problem.
+
+The script now detects this in two ways:
+
+1. **`finish_reason` check** — logs a warning when DeepSeek returns `finish_reason=length` (output truncated due to token limit)
+2. **Consecutive unchanged lines** — if 5+ lines in a row come back identical to the source, the LLM stopped translating
+
+When detected, the script identifies exactly where translation stopped, keeps the good lines, and resends only the failed tail as a smaller request:
+
+```
+Batch 0-200: translation stopped at line 96, resending last 104 lines...
+Batch 0-200: recovered 104/104 failed lines
+```
+
+This is a significant improvement over retrying the entire batch — the failed portion is smaller, more likely to succeed, and the already-translated lines don't waste API tokens.
+
+### Output token limit (max_tokens=8192)
+
+DeepSeek's `deepseek-chat` model has a **default max output of 4096 tokens**, but a **maximum of 8192**. If you don't explicitly set `max_tokens`, you get the 4K default — which causes silent truncation around line 190 of a subtitle batch.
+
+This took a long time to find because the failures looked like "the LLM just stopped translating" — there was no error, no warning, just partial output. We now explicitly set `max_tokens=8192` in every API call.
+
+The default `batch_size` of 200 is carefully tuned to stay within this: at roughly 20-25 tokens per subtitle line output (including the `[N]` marker), 200 lines produces ~4000-5000 tokens, leaving headroom for unusually long lines.
+
+### Sidecar discovery with flag suffixes
+
+Subtitle files come in many naming conventions:
+
+```
+Episode.en.srt           # standard
+Episode.en.sdh.srt       # SDH (Subtitles for Deaf and Hard-of-hearing)
+Episode.en.hi.srt        # Hearing Impaired
+Episode.en.forced.srt    # Forced narrative
+Episode.en.cc.srt        # Closed Captions
+```
+
+Early versions only looked for the base pattern (`{stem}.{code}.{ext}`) and silently ignored the flag variants — meaning thousands of SDH files were invisible to the script and didn't get translated or cleaned up.
+
+The current `find_sidecar()` iterates through all known flag suffixes:
+
+```python
+_SIDECAR_FLAG_SUFFIXES = ("", ".sdh", ".hi", ".cc", ".forced")
+
+for ext in (".srt", ".ass"):
+    for code in sorted(lang_codes):
+        for flag in _SIDECAR_FLAG_SUFFIXES:
+            candidate = parent / f"{stem}.{code}{flag}{ext}"
+            if cache.exists(candidate):
+                return candidate
+```
+
+The language code extractor strips the flag to get the actual language: `Episode.en.sdh.srt` → `en`.
+
+### Fallback translation from any language
+
+The `source_languages` list in config defines preferred translation sources (usually English, Danish, Swedish, etc.). But what about episodes that only have Romanian or Polish subtitles?
+
+If nothing in the priority list is found, the script falls back to **any available subtitle in any language**. The LLM can translate from virtually any language — it doesn't need to be in the source list. Fallback usage is logged as `[FALLBACK]` for easy review.
+
+This works for:
+- Embedded tracks with any language tag
+- Untagged embedded tracks (language identified via LLM sample)
+- External subtitle files with unknown language codes
+- External files without any language code at all (`Movie.srt`)
+
+### Why multi-line subtitle reflow
+
+Some source subtitles have 3 or more lines per cue. Most subtitle standards (and most video players) expect a maximum of 2 lines — 3+ lines can overlap with on-screen text or be uncomfortable to read.
+
+After translation, the script checks each subtitle cue. If it has 3+ text lines, it merges them into a single string and splits back into 2 lines at natural word boundaries using a proportional algorithm:
+
+```python
+def _split_to_n_lines_preserving_words(text, n):
+    # Find cut points at word boundaries
+    # Prefer balanced line lengths
+    # Never break in the middle of a word
+```
+
+All text is preserved — only the line break positions change. No text is added or removed.
+
+### Thread-safe parallel translation
+
+With 8 concurrent translation workers, race conditions were a real risk. The script uses:
+
+- **Atomic file writes** — translated output is written to a temp file, then renamed (rename is atomic on both Linux and Windows NTFS)
+- **Lock for stats** — a `threading.Lock` guards the shared stats dict during parallel updates
+- **Per-file isolation** — each worker operates on one file end-to-end (translate → mux → clean) before moving to the next. No shared state between files.
+
+The deferred cleaning phase runs sequentially after all translations complete, to avoid contention on files that don't need translation but might need cleaning.
+
+### Why the deterministic system prompt
+
+We tested multiple prompt variants with different temperatures:
+
+- **v1 prompt + temperature 0.3** (current) — deterministic, firm, numbered rules. Produces excellent context-aware translations.
+- **v2 prompt + temperature 1.3** (DeepSeek's official recommendation for translation) — more varied phrasings. Testing showed the higher temperature produced more colloquial output but lost context awareness. For example, it would translate "See ya, fellas!" as "Ser dere, folkens" (inclusive) when the context made "gutter" (specifically men) correct.
+
+The v1 prompt produces slightly less flashy output but is more consistently correct. For subtitles where context matters more than variety, determinism wins.
+
+Notably, the partial-failure rate is the **same** with both prompts — it's driven by DeepSeek server-side flakiness, not prompt quality. The retry mechanism is what actually solves failures.
+
+</details>
 
 ---
 
