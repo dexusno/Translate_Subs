@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.2.1 — 2026-04-08
+
+### Features
+
+- **2-line subtitle reflow** — subtitle cues with 3 or more lines are automatically reflowed to a maximum of 2 balanced lines after translation. All text is preserved, only line break positions change.
+
+---
+
 ## v1.2.0 — 2026-04-06
 
 ### Features
@@ -11,7 +19,6 @@
 - **Force retranslate in pick.sh** — new action option for retranslating files that already have target language subs.
 - **Configurable PGS/bitmap subtitle removal** — new `remove_bitmap_subs` setting in `llm_config.json`. Set to `true` to remove PGS/DVD bitmap subtitle tracks. Default: `false` (safe default for new users).
 - **DeepSeek recommended** as default provider in README with real-world cost breakdown (~1 cent per episode).
-- **2-line subtitle reflow** — subtitle cues with 3 or more lines are automatically reflowed to a maximum of 2 balanced lines after translation. All text is preserved, only line break positions change.
 
 ### Bug Fixes
 
