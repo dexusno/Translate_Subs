@@ -1,95 +1,242 @@
-# Translate Subs
+# Translate_Subs
 
-Translate subtitles for your entire media library using the power of large language models. Point it at a folder and it handles everything — detecting existing subtitles in your files (embedded or external `.srt`/`.ass` files), translating them to your language, and cleaning up what you don't need.
+> Batch-translate subtitles for your entire media library using LLMs that understand **context, idioms, and slang** — not just word-for-word replacement.
 
-Unlike traditional subtitle translation tools that do word-for-word replacement, Translate Subs uses LLMs that understand context, idioms, slang, and cultural references. The result is subtitles that read naturally — like they were written by a native speaker, not run through a machine translator.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-blue)](https://github.com/dexusno/Translate_Subs)
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
 
-Works with TV series, movies, documentaries — any media library, any folder structure. Runs on both Windows and Linux, supports cloud APIs and local models, and is designed to process large libraries efficiently over local drives or network shares.
+Point it at a folder — movies, TV series, documentaries, entire libraries — and it handles everything. Detects existing subtitles (embedded or external), translates them into your language, embeds them into your MKVs, and cleans up what you don't need. All in one pass.
 
-## Highlights
+The result is subtitles that read like they were written by a native speaker, at a cost of roughly **1 cent per episode**.
 
-- **Natural translations** — LLMs understand context, tone, and intent. Jokes land, slang makes sense, and dialogue flows naturally.
-- **Fully configurable** — choose your target language, source languages, which languages to keep, and which LLM provider to use. Everything is in one config file.
-- **Hands-off batch processing** — point it at a folder and walk away. It finds subtitles, translates them, and handles the rest. Re-running is safe — already translated files are skipped.
-- **Fast** — streaming pipeline starts translating as soon as the first file is found. Translates up to 8 files in parallel. Directory caching eliminates slow lookups over network shares.
-- **Flexible source detection** — finds subtitles in external files (`.srt`, `.ass`, including `.sdh`, `.hi`, `.forced` variants), embedded MKV tracks, and even untagged tracks (identified via LLM). If no preferred language is available, falls back to any language it can find — the LLM handles the rest.
-- **Smart MKV handling** — translating, embedding, and cleaning happen in a single remux pass. One read, one write — half the I/O compared to doing them separately.
+---
+
+## Table of Contents
+
+- [Features](#features)
+- [How It Works](#how-it-works)
+- [Cost](#cost)
+- [Installation](#installation)
+  - [Windows](#windows-install)
+  - [Linux (Debian/Ubuntu)](#linux-install)
+- [Configuration](#configuration)
+  - [Target Language](#target-language)
+  - [Keeping Other Languages](#keeping-other-languages)
+  - [Source Languages](#source-languages)
+  - [LLM Profiles](#llm-profiles)
+  - [Per-Profile Tuning](#per-profile-tuning)
+  - [Bitmap Subtitle Removal](#bitmap-subtitle-removal-pgs)
+- [Usage](#usage)
+- [Scripts](#scripts)
+- [Supported File Formats](#supported-file-formats)
+- [Troubleshooting](#troubleshooting)
+- [Disclaimer](#disclaimer)
+- [License](#license)
+
+---
+
+## Features
+
+- **Natural translations** — LLMs understand context, tone, and intent. Jokes land, slang makes sense, dialogue flows naturally.
+- **Fully configurable** — target language, source priority list, which languages to keep, which LLM to use. All in one config file.
+- **Hands-off batch processing** — point at a folder and walk away. Already translated files are skipped. Safe to re-run any time.
+- **Fast** — streaming pipeline starts translating as soon as the first file is found. Up to 8 files translated in parallel.
+- **Network-friendly** — directory caching eliminates thousands of slow lookups over VPN/network shares.
+- **Flexible source detection** — finds subtitles in external files (`.srt`, `.ass`, including `.sdh`/`.hi`/`.forced` variants), embedded MKV tracks, and even untagged tracks (identified via LLM).
+- **Smart fallback** — if no preferred-language subtitle is available, falls back to any language it can find. The LLM handles the rest.
+- **One-pass remux** — translating, embedding, and cleaning happen in a single ffmpeg call. Half the I/O of doing them separately.
+- **Self-healing translations** — detects when the LLM stops mid-batch and automatically retries only the failed portion.
 - **Multiple LLM providers** — DeepSeek, OpenAI, Groq, Mistral, OpenRouter, Ollama, LM Studio. Any OpenAI-compatible API works.
 - **Cross-platform** — PowerShell wrappers for Windows, Bash wrappers for Linux. Same Python core on both.
 
-## Requirements
+---
 
-- **Python 3.11+** with `requests` and `python-dotenv`
-- **ffmpeg** and **ffprobe** on PATH
-- An API key for at least one LLM provider (or a local model via Ollama / LM Studio)
+## How It Works
 
-## Quick Start
+```
+Video file
+  │
+  ▼
+[1] Skip check ─── already has target language? skip
+  │
+  ▼
+[2] Source detection ─── find subtitles in preferred languages
+  │                      (external .srt/.ass first, then embedded)
+  ▼
+[3] Fallback ─── if nothing preferred, use ANY available language
+  │
+  ▼
+[4] LLM Translation ─── batch translate via DeepSeek/OpenAI/etc.
+  │                     with self-healing retry on failures
+  ▼
+[5] Reflow ─── ensure max 2 lines per subtitle cue
+  │
+  ▼
+[6] MKV remux ─── embed translated subs + keep wanted tracks +
+  │               drop unwanted tracks, all in ONE pass
+  ▼
+Finished MKV with only your wanted languages
+```
 
-### Windows
+**What it does:**
+- Scans a folder recursively for video files (MKV, MP4, AVI, MOV, WebM, OGM)
+- Skips any video that already has the target language (embedded or external)
+- Extracts and translates the best available source subtitles
+- Embeds the translated output back into MKV files as a native subtitle track
+- Strips any unwanted languages to keep your files clean
+- Never touches the original video or audio streams
+
+Translation and scanning overlap — the first file starts translating while the rest are still being scanned.
+
+---
+
+## Cost
+
+| Scale | Approximate cost |
+|---|---|
+| 1 episode (45 min) | ~$0.01 |
+| 1 season (10 episodes) | ~$0.10 |
+| 1 full series (50 episodes) | ~$0.50 |
+| 100 episodes | ~$1 |
+| 1,000 episodes | ~$10 |
+
+> [!NOTE]
+> These estimates are based on **DeepSeek Chat pricing as of April 2026** (the default and recommended provider). A cup of coffee pays for ~500 episodes. A Netflix monthly subscription covers ~1,500. Other providers (OpenAI, Anthropic, etc.) can cost 10-50x more for similar quality. Always check your provider's current pricing before processing large libraries.
+
+> The `--dry-run` flag lets you preview exactly what would be processed without making any API calls or modifying any files.
+
+---
+
+## Installation
+
+### Requirements (both platforms)
+
+| Component | Required | Notes |
+|---|---|---|
+| **Python 3.11+** | Yes | Installed by the script if missing |
+| **Git** | Yes | Installed by the script if missing |
+| **FFmpeg + FFprobe** | Yes | Installed by the script if missing |
+| **LLM API key** | Yes | DeepSeek recommended (tested extensively). Other OpenAI-compatible providers also work |
+
+---
+
+### Windows Install
+
+#### Prerequisites
+- Windows 10 or 11
+- PowerShell 5.1+ (built into Windows)
+- Python 3.11+ (the installer can install it for you)
+
+#### Step 1: Run the installer
+
+Open PowerShell, navigate to where you want to install, and run the one-liner:
 
 ```powershell
-# One-liner install
+cd D:\
 irm https://raw.githubusercontent.com/dexusno/Translate_Subs/main/install.ps1 | iex
-
-# Or manual
-git clone https://github.com/dexusno/Translate_Subs.git
-cd Translate_Subs
-pip install requests python-dotenv
-cp .env.example .env        # edit and add your API key
-
-# Test
-.\translate_subs.ps1 "D:\Media\Some Folder" -DryRun
 ```
 
-### Linux (Debian / Ubuntu)
+This creates a `Translate_Subs` folder in your current directory (e.g. `D:\Translate_Subs`).
+
+The installer will:
+1. Check for Python 3.11+, git, ffmpeg — offer to install via `winget` if missing
+2. Clone the repository
+3. Install Python dependencies (`requests`, `python-dotenv`)
+4. Create `.env` and `llm_config.json` from templates
+
+#### Step 2: Get your LLM API key
+
+DeepSeek is recommended (see [Configuration](#configuration) below), but any OpenAI-compatible provider works.
+
+#### Step 3: Run it
+
+```powershell
+cd D:\Translate_Subs
+.\translate_subs.ps1 "D:\Movies\Some Movie"
+```
+
+---
+
+### Linux Install
+
+#### Prerequisites
+- Debian 13, Ubuntu 22.04+, or similar
+- `sudo` access (for installing system packages)
+
+#### Step 1: Run the installer
+
+Open a terminal, navigate to where you want to install, and run the one-liner:
 
 ```bash
-# One-liner install
+cd /opt
 curl -fsSL https://raw.githubusercontent.com/dexusno/Translate_Subs/main/linux/install.sh | bash
-
-# Or manual
-sudo apt-get install python3 python3-pip python3-venv ffmpeg mkvtoolnix git
-git clone https://github.com/dexusno/Translate_Subs.git
-cd Translate_Subs
-python3 -m venv .venv
-.venv/bin/pip install requests python-dotenv
-cp .env.example .env        # edit and add your API key
-
-# Test
-./linux/translate_subs.sh "/media/tv/Some Show" --dry-run
 ```
+
+This creates a `Translate_Subs` folder in your current directory (e.g. `/opt/Translate_Subs`).
+
+The installer will:
+1. `apt-get install` system dependencies (python3, python3-venv, git, ffmpeg, mkvtoolnix)
+2. Clone the repository
+3. Create a Python `venv` at `.venv/` inside the project
+4. Install all Python dependencies
+5. Create `.env` and `llm_config.json` from templates
+6. Mark all shell scripts as executable
+
+#### Step 2: Get your LLM API key
+
+DeepSeek is recommended (see [Configuration](#configuration) below), but any OpenAI-compatible provider works.
+
+#### Step 3: Run it
+
+```bash
+cd /opt/Translate_Subs
+./linux/translate_subs.sh "/media/tv/Some Show"
+```
+
+The wrapper runs the venv Python directly — no manual activation needed.
+
+#### Updating
+
+On either platform, to pull the latest version while keeping your local config:
+
+```bash
+./linux/update.sh        # Linux
+.\update.ps1             # Windows
+```
+
+This stashes any local changes, pulls the latest commits, then restores your modifications.
 
 ---
 
 ## Configuration
 
-All configuration lives in `llm_config.json`. On first install, copy the example file:
+All configuration lives in `llm_config.json` in the project directory. On first install, it's created automatically from `llm_config.example.json`.
 
-```bash
-cp llm_config.example.json llm_config.json
-```
+> [!IMPORTANT]
+> `llm_config.json` is gitignored — your settings survive updates. Never edit `llm_config.example.json` for your personal config.
 
-This file is gitignored — your settings won't be overwritten by updates. Here's the full structure:
+Full file structure at a glance:
 
 ```
 llm_config.json
-├── default_profile        Which LLM provider to use (e.g. "deepseek")
-├── remove_bitmap_subs     Remove PGS/DVD bitmap subtitle tracks (true/false)
+├── default_profile         Which LLM provider to use (e.g. "deepseek")
+├── remove_bitmap_subs      Remove PGS/DVD bitmap subtitle tracks (true/false)
 ├── target_language
-│   ├── name               Language name for the LLM prompt
-│   ├── codes              ISO codes that mean "already translated, skip"
-│   ├── sidecar_code       Output filename code (Movie.XX.srt)
-│   ├── mkv_tag            Language tag when embedding into MKV
-│   └── keep_with          Other languages to keep alongside the target
-├── source_languages       Ordered list of languages to translate FROM
-└── profiles               LLM provider configs (API URL, model, key, tuning)
+│   ├── name                Language name for the LLM prompt
+│   ├── codes               ISO codes that mean "already translated, skip"
+│   ├── sidecar_code        Output filename code (Movie.XX.srt)
+│   ├── mkv_tag             Language tag when embedding into MKV
+│   └── keep_with           Other languages to keep alongside the target
+├── source_languages        Ordered list of languages to translate FROM
+└── profiles                LLM provider configs (API URL, model, key, tuning)
 ```
 
-Each section is explained in detail below.
+Each section is explained below.
 
 ### Target Language
 
-The `target_language` block defines what you're translating **to** and which other languages you want to keep in your files:
+The `target_language` block defines what you're translating **to** and which ISO codes represent it:
 
 ```json
 "target_language": {
@@ -102,43 +249,17 @@ The `target_language` block defines what you're translating **to** and which oth
 ```
 
 | Field | What it does |
-|-------|-------------|
+|---|---|
 | `name` | The language name sent to the LLM in the translation prompt. |
 | `codes` | All ISO codes that represent this language. If a file already has subtitles tagged with any of these codes, it's considered done and skipped. |
 | `sidecar_code` | The code used in output filenames: `Movie.{code}.srt` |
 | `mkv_tag` | The language tag applied when embedding translated subs into an MKV. |
 | `keep_with` | Languages to keep alongside your target (see below). |
 
-### Keeping other languages
-
-`keep_with` controls which additional languages are allowed to remain in your MKV files. Your target language is always kept — you don't need to list it here.
-
-This setting affects two things:
-
-- **Embedded subtitle tracks** — tracks tagged with a `keep_with` language stay in the MKV. Tracks in any other language are removed during the clean step.
-- **External subtitle files** — if an external `.srt` or `.ass` file exists for a `keep_with` language and that language isn't already embedded, it gets embedded into the MKV automatically. After processing, all recognized external subtitle files are cleaned up.
-
-After processing, each MKV will contain only your target language and the languages listed in `keep_with`. Everything else is stripped out.
-
-### Bitmap subtitle removal (PGS)
-
-Bitmap-based subtitle tracks (PGS, DVD subs) can optionally be removed during cleaning. These formats are incompatible with many players and workflows, and text-based subtitles (SRT) are generally preferred.
-
-This is controlled by the `remove_bitmap_subs` setting in `llm_config.json`:
-
-```json
-"remove_bitmap_subs": true
-```
-
-When enabled, PGS and DVD subtitle tracks are removed regardless of language, and are ignored when checking for existing target language subs. If a file has target-language PGS subs but also has text-based subs in another language, the script will translate the text subs instead.
-
-**Default: `false`** (PGS tracks are kept). Set to `true` if you want them removed.
-
-### Examples
-
 <details>
-<summary><strong>French</strong> (keep English alongside)</summary>
+<summary><strong>Examples for other target languages</strong></summary>
 
+**French** (keep English alongside):
 ```json
 "target_language": {
   "name": "French",
@@ -148,11 +269,8 @@ When enabled, PGS and DVD subtitle tracks are removed regardless of language, an
   "keep_with": ["en", "eng"]
 }
 ```
-</details>
 
-<details>
-<summary><strong>German</strong> (keep English alongside)</summary>
-
+**German** (keep English alongside):
 ```json
 "target_language": {
   "name": "German",
@@ -162,11 +280,8 @@ When enabled, PGS and DVD subtitle tracks are removed regardless of language, an
   "keep_with": ["en", "eng"]
 }
 ```
-</details>
 
-<details>
-<summary><strong>Brazilian Portuguese</strong> (keep English and Spanish)</summary>
-
+**Brazilian Portuguese** (keep English and Spanish):
 ```json
 "target_language": {
   "name": "Brazilian Portuguese",
@@ -177,6 +292,17 @@ When enabled, PGS and DVD subtitle tracks are removed regardless of language, an
 }
 ```
 </details>
+
+### Keeping Other Languages
+
+`keep_with` controls which additional languages are allowed to remain in your MKV files. Your target language is always kept — you don't need to list it here.
+
+This setting affects two things:
+
+- **Embedded subtitle tracks** — tracks tagged with a `keep_with` language stay in the MKV. Tracks in any other language are removed.
+- **External subtitle files** — if an external `.srt` or `.ass` file exists for a `keep_with` language and it isn't already embedded, it gets embedded automatically. After processing, all recognized external subtitle files are cleaned up.
+
+After processing, each MKV will contain only your target language and the languages listed in `keep_with`. Everything else is stripped out.
 
 ### Source Languages
 
@@ -190,25 +316,29 @@ The `source_languages` list controls which subtitle tracks are preferred as a tr
 ]
 ```
 
-Add, remove, or reorder languages to match your library. If none of these are found, the script falls back to any available subtitle in any language (see "How It Works" below).
+Add, remove, or reorder languages to match your library. If none of these are found, the script falls back to any available subtitle in any language.
 
 ### LLM Profiles
 
 Choose your translation backend with `--profile`. Each profile is defined in `llm_config.json`:
 
 | Profile | Provider | Model | Notes |
-|---------|----------|-------|-------|
+|---|---|---|---|
 | `deepseek` | DeepSeek | deepseek-chat | **Recommended** — excellent quality, very low cost |
-| `openai` | OpenAI | gpt-4o | High quality, higher cost |
+| `openai` | OpenAI | gpt-4o | High quality, significantly higher cost |
 | `groq` | Groq | llama-3.3-70b | Free tier available |
 | `mistral` | Mistral | mistral-large | Good for European languages |
-| `openrouter` | OpenRouter | deepseek/deepseek-chat | Access to many models |
-| `ollama` | Ollama | qwen2.5:14b | Free, runs locally |
-| `lmstudio` | LM Studio | (loaded model) | Free, runs locally |
+| `openrouter` | OpenRouter | deepseek/deepseek-chat | Access to many models via one API |
+| `local` | Ollama / LM Studio | (loaded model) | Free, runs locally |
 
-**We recommend DeepSeek** as the default provider. It produces natural, context-aware translations at a fraction of the cost of other cloud APIs. In our experience, a typical 45-minute episode costs about 1 cent to translate. A full season runs about $0.10, and even translating 1,000 episodes stays under $10. See [DeepSeek pricing](https://api-docs.deepseek.com/quick_start/pricing) for current rates. *We have no affiliation with DeepSeek and receive no benefit from recommending them — it's simply what works best for this use case.*
+> **We recommend DeepSeek** as the default. It produces natural, context-aware translations at a fraction of the cost of other cloud APIs. See [DeepSeek pricing](https://api-docs.deepseek.com/quick_start/pricing) for current rates.
+>
+> *We have no affiliation with DeepSeek and receive no benefit from recommending them — it's simply what works best for this use case.*
 
-Adding a custom provider is easy — any OpenAI-compatible API works:
+<details>
+<summary><strong>Adding a custom provider</strong></summary>
+
+Any OpenAI-compatible API works:
 
 ```json
 "my-provider": {
@@ -219,10 +349,11 @@ Adding a custom provider is easy — any OpenAI-compatible API works:
 ```
 
 Then add `MY_PROVIDER_API_KEY=your-key` to `.env`. For local models that don't need a key, use `"api_key": "none"` instead.
+</details>
 
 ### Per-Profile Tuning
 
-Each profile can include performance settings. Cloud APIs handle large batches and high concurrency well. Local models benefit from smaller batches and longer timeouts:
+Each profile can include performance settings. Cloud APIs handle larger batches efficiently, while local models benefit from smaller batches and longer timeouts:
 
 ```json
 "deepseek": {
@@ -237,12 +368,27 @@ Each profile can include performance settings. Cloud APIs handle large batches a
 ```
 
 | Setting | What it does | Cloud default | Local default |
-|---------|-------------|---------------|---------------|
+|---|---|---|---|
 | `batch_size` | Subtitle groups per API call | 200 | 25 |
 | `parallel` | Files translated concurrently | 8 | 1 |
 | `timeout` | Seconds before an API call times out | 120 | 600 |
 
 CLI flags (`--batch-size`, `--parallel`) override profile settings when specified.
+
+> [!NOTE]
+> The cloud `batch_size` of 200 is tuned for DeepSeek's 8K output token limit. Raising it further may cause mid-batch truncation (the script detects and retries this, but it's slower). Lowering it is always safe.
+
+### Bitmap Subtitle Removal (PGS)
+
+Bitmap-based subtitle tracks (PGS, DVD subs) can optionally be removed during cleaning. These formats are incompatible with many players and workflows, and text-based subtitles (SRT) are generally preferred.
+
+```json
+"remove_bitmap_subs": true
+```
+
+When enabled, PGS and DVD subtitle tracks are removed regardless of language, and are ignored when checking for existing target language subs. If a file has target-language PGS subs but also has text-based subs in another language, the script will translate the text subs instead.
+
+> **Default: `false`** (PGS tracks are kept). Set to `true` if you want them removed.
 
 ---
 
@@ -258,95 +404,126 @@ sudo apt install fzf          # one-time setup
 ./linux/pick.sh /mnt/media/Tv  # or pick from a specific folder
 ```
 
-Type a few letters to filter, arrow keys to select, then choose an action (translate, clean, mux, or dry-run). Media folder paths are stored in `media_roots.conf` (gitignored — survives `git pull`).
+Type a few letters to filter, arrow keys to select, then choose an action (translate, clean, mux, or dry-run variants). Media folder paths are stored in `media_roots.conf` (gitignored — survives `git pull`).
 
-### Translate
-
-Point the script at any folder. It scans recursively, so you can target a single movie, a TV series, or an entire library.
-
-**Windows:**
+### Windows
 
 ```powershell
+# Basic — translate everything in a folder
 .\translate_subs.ps1 "D:\Movies\Inception (2010)"
+
+# Entire TV series (all seasons)
 .\translate_subs.ps1 "D:\TvSeries\Breaking Bad"
-.\translate_subs.ps1 "D:\Media" -Profile openai -DryRun
+
+# Preview — see what would be translated
+.\translate_subs.ps1 "D:\Media" -DryRun
+
+# Different LLM provider
+.\translate_subs.ps1 "D:\Movies" -Profile openai
+
+# Limit files, retranslate existing, keep external files
 .\translate_subs.ps1 "D:\Movies" -Limit 5 -Force -KeepSidecar
+
+# Network share (UNC paths supported)
 .\translate_subs.ps1 "\\nas\media\Movies"
 ```
 
-**Linux:**
+### Linux
 
 ```bash
+# Basic — translate everything in a folder
 ./linux/translate_subs.sh "/media/movies/Inception (2010)"
+
+# Entire TV series (all seasons)
 ./linux/translate_subs.sh "/media/tv/Breaking Bad"
-./linux/translate_subs.sh "/media" --profile openai --dry-run
+
+# Preview — see what would be translated
+./linux/translate_subs.sh "/media" --dry-run
+
+# Different LLM provider
+./linux/translate_subs.sh "/media/movies" --profile openai
+
+# Limit files, retranslate existing, keep external files
 ./linux/translate_subs.sh "/media/movies" --limit 5 --force --keep-sidecar
+
+# Network share (mounted via SMB/NFS)
 ./linux/translate_subs.sh "/mnt/nas/movies"
 ```
 
+### CLI Options
+
+| Windows flag | Linux flag | Description | Default |
+|---|---|---|---|
+| `folder` | `folder` | Path to scan for video files | Required |
+| `-Profile` | `--profile` | LLM profile from llm_config.json | `deepseek` |
+| `-BatchSize` | `--batch-size` | Subtitle groups per LLM API call | 200 |
+| `-Parallel` | `--parallel` | Concurrent file processing | 8 |
+| `-Limit` | `--limit` | Max number of files to process | unlimited |
+| `-Force` | `--force` | Retranslate even if target exists | off |
+| `-DryRun` | `--dry-run` | Preview without making changes | off |
+| `-KeepSidecar` | `--keep-sidecar` | Keep external `.srt` after muxing | off |
+| `-SkipClean` | `--skip-clean` | Don't strip unwanted tracks | off |
+| `-SkipDetect` | `--skip-detect` | Don't detect untagged subtitle languages | off |
+| `-LogFile` | `--log-file` | Also write log output to this file | none |
+
 ### Standalone tools
 
-The main `translate_subs` script handles everything automatically — translating, embedding into MKV, and cleaning unwanted tracks in one pass. You don't need to run the tools below separately under normal use.
+The main `translate_subs` script handles everything automatically — translating, embedding into MKV, and cleaning unwanted tracks in one pass. **You don't need to run the tools below separately under normal use.**
 
-However, they're available as standalone scripts if you want to run just one step on its own:
+They're available as standalone scripts if you want to run just one step on its own:
 
-**Embed external subtitles into MKVs** — useful if you have `.srt` files from another source that you want to embed:
+<details>
+<summary><strong>Embed external subtitles into MKVs</strong></summary>
 
-```powershell
-.\mux_subs.ps1 "D:\TvSeries\Show"                          # Windows
-```
-```bash
-./linux/mux_subs.sh "/media/tv/Show"                        # Linux
-```
-
-**Clean unwanted tracks** — useful if you just want to strip unwanted languages without translating:
+Useful if you already have `.srt` files from another source and just want to embed them:
 
 ```powershell
-.\clean_subs.ps1 "D:\Movies" -DryRun                        # Windows
+.\mux_subs.ps1 "D:\TvSeries\Show"                 # Windows
 ```
 ```bash
-./linux/clean_subs.sh "/media/movies" --dry-run              # Linux
+./linux/mux_subs.sh "/media/tv/Show"               # Linux
 ```
+</details>
+
+<details>
+<summary><strong>Clean unwanted subtitle tracks</strong></summary>
+
+Useful if you just want to strip unwanted languages without translating:
+
+```powershell
+.\clean_subs.ps1 "D:\Movies" -DryRun               # Windows
+```
+```bash
+./linux/clean_subs.sh "/media/movies" --dry-run    # Linux
+```
+</details>
 
 ---
 
 ## Scripts
 
 | PowerShell | Linux | Purpose |
-|------------|-------|---------|
+|---|---|---|
 | `translate_subs.ps1` / `.py` | `linux/translate_subs.sh` | Translate, embed, and clean in one pass |
 | `mux_subs.ps1` / `.py` | `linux/mux_subs.sh` | Embed external subtitle files into MKV containers |
 | `clean_subs.ps1` / `.py` | `linux/clean_subs.sh` | Remove unwanted subtitle tracks from MKVs |
 | `start-llama-server.ps1` | `linux/start-llama-server.sh` | Start llama.cpp server for local translation |
 | `install.ps1` | `linux/install.sh` | Install dependencies and configure the project |
-| — | `linux/pick.sh` | Interactive folder picker (requires fzf) |
+| `update.ps1` | `linux/update.sh` | Update to the latest version, preserving local changes |
+| — | `linux/pick.sh` | Interactive folder picker (requires `fzf`) |
 
-## How It Works
-
-For each video file:
-
-1. **Skip if done** — if the target language already exists (embedded or as an external file), the file is skipped.
-2. **Find source subtitles** — checks external files first (`.srt`, `.ass`, including `.sdh`/`.hi`/`.forced` variants), then embedded tracks. Languages from the `source_languages` priority list are preferred.
-3. **Detect untagged tracks** — if an embedded subtitle track has no language tag, a small sample is extracted and sent to the LLM for identification. The track is then tagged in the MKV.
-4. **Fallback** — if no subtitle in the priority list is found, the script falls back to any available subtitle in any language — embedded tracks, external files, anything it can read. The LLM can translate from virtually any language, so even a Romanian or Polish subtitle is better than nothing. Fallback usage is logged as `[FALLBACK]` for easy review.
-5. **Translate** — the subtitle text is sent to the LLM in batches. The response is reassembled into a properly formatted `.srt` file.
-6. **Reflow** — any subtitle cues with 3 or more lines are reflowed to a maximum of 2 balanced lines. All text is preserved, only the line break positions change.
-7. **Embed + clean** — in a single remux pass: the translated subs are embedded, any wanted-language external files are embedded, unwanted tracks are removed, and external subtitle files are cleaned up.
-
-Translation starts as soon as the first file is ready — the scanning and translating phases overlap, so you don't wait for the entire library to be scanned before work begins.
+---
 
 ## Supported File Formats
 
-The script works with any common video format — MKV is not required.
+The script works with any common video format — **MKV is not required**.
 
 | Format | Translation | Embedding | Track cleanup |
-|--------|------------|-----------|---------------|
+|---|---|---|---|
 | **MKV** | Full support — translates from embedded or external subtitles | Translated subs + wanted external files are embedded directly into the MKV | Unwanted subtitle tracks are removed, external files cleaned up |
 | **MP4, AVI, MOV, WebM, OGM** | Full support — translates from external `.srt`/`.ass` files | Not supported (these formats don't allow easy subtitle embedding without re-encoding) | Not applicable |
 
 For non-MKV files, the translated subtitles are saved as a `.srt` file next to the video (e.g. `Movie.no.srt`). Existing external subtitle files are left untouched. Most players — Plex, Jellyfin, VLC, Kodi — pick up external `.srt` files automatically.
-
-## Folder Structure
 
 The scripts work with any folder layout. Point them at any level and they scan recursively:
 
@@ -366,27 +543,43 @@ Media/              # point here to process everything
   Documentaries/
 ```
 
+---
+
 ## Troubleshooting
 
-**ffmpeg not found** — install ffmpeg and make sure both `ffmpeg` and `ffprobe` are on your PATH. Windows: `winget install ffmpeg`. Linux: `sudo apt-get install ffmpeg`.
+**"ffmpeg not found"**
+Install ffmpeg and ensure both `ffmpeg` and `ffprobe` are on your PATH.
+- Windows: `winget install ffmpeg` then restart your terminal
+- Linux: `sudo apt-get install ffmpeg`
 
-**Python packages not found (Linux)** — the Linux scripts use a virtual environment at `.venv/`. Re-run `./linux/install.sh` or manually install: `.venv/bin/pip install requests python-dotenv`.
+**"Python packages not found" (Linux)**
+The Linux scripts use a virtual environment at `.venv/`. Re-run `./linux/install.sh` or manually install:
+```bash
+.venv/bin/pip install requests python-dotenv
+```
 
-**API timeout** — if translations time out on large files, reduce `--batch-size` (default 200) or increase the `timeout` in your profile config.
+**API timeout**
+If translations time out on large files, reduce `--batch-size` (default 200) or increase the `timeout` in your profile config.
 
-**Partially translated episodes** — if subtitles switch from your target language back to the source language mid-episode, the batch size may be too large for your LLM provider's output token limit. DeepSeek `deepseek-chat` has an 8K output token limit. The default `batch_size` of 200 is tuned to stay within this. If you see `finish_reason=length` warnings in the log, lower the batch size further. The script automatically detects and retries failed portions, but smaller batches prevent the issue entirely.
+**Partially translated episodes**
+If subtitles switch from your target language back to the source mid-episode, the batch size may be too large for your LLM provider's output token limit. DeepSeek `deepseek-chat` has an 8K output token limit — the default `batch_size` of 200 is tuned to stay within this. If you see `finish_reason=length` warnings, lower the batch size further. The script automatically detects and retries failed portions, but smaller batches prevent the issue entirely.
 
-**Safe to re-run** — already translated files are skipped. Partially translated files (interrupted mid-write) are retranslated. You can stop and resume at any time.
+**Safe to re-run**
+Already translated files are skipped. Partially translated files (interrupted mid-write) are retranslated. You can stop and resume at any time.
+
+---
 
 ## Disclaimer
 
-This software is provided as-is, without warranty of any kind. By using Translate Subs, you acknowledge the following:
+This software is provided as-is, without warranty of any kind. By using Translate_Subs, you acknowledge the following:
 
 - **File modification** — this tool modifies media files in place (remuxing MKV containers, deleting external subtitle files). While it uses atomic file operations and creates backups during remuxing, data loss is always possible. **Back up your media library before running on important files.**
 - **Translation quality** — translations are generated by third-party LLM APIs or local models. Output quality depends on the model, the source material, and the language pair. Always spot-check translations before relying on them.
-- **API costs** — cloud LLM providers charge per token. Processing a large library can incur significant costs depending on your provider and plan. Use `--dry-run` to preview what will be processed before committing.
-- **Third-party services** — this tool sends subtitle text to external APIs (DeepSeek, OpenAI, etc.) for translation. Do not use it on content you are not authorized to share with these services.
+- **API costs** — cloud LLM providers charge per token. While costs are low (~$0.01 per episode), processing a very large library will accumulate charges. Use `--dry-run` to preview what will be processed before committing.
+- **Third-party services** — this tool sends subtitle text (not video) to external APIs (DeepSeek, OpenAI, etc.) for translation. Do not use it on content you are not authorized to share with these services.
 - **Legal responsibility** — you are solely responsible for ensuring your use of this tool complies with applicable laws, including copyright and content licensing. The authors of this project are not responsible for how it is used.
+
+---
 
 ## License
 
