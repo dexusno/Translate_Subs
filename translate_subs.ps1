@@ -47,7 +47,10 @@ param(
     [switch]$SkipDetect,
 
     [Parameter(Mandatory = $false)]
-    [switch]$KeepSidecar
+    [switch]$KeepSidecar,
+
+    [Parameter(Mandatory = $false)]
+    [switch]$NoMux
 )
 
 # ── Configuration ─────────────────────────────────────────────────────────────
@@ -173,6 +176,10 @@ if ($KeepSidecar) {
     $pyArgs += "--keep-sidecar"
 }
 
+if ($NoMux) {
+    $pyArgs += "--no-mux"
+}
+
 $pyArgs += $ResolvedFolder
 
 # Determine profile display name
@@ -200,6 +207,9 @@ if ($SkipDetect) {
 }
 if ($KeepSidecar) {
     Write-Host "  Sidecar:   KEEP after mux" -ForegroundColor DarkGray
+}
+if ($NoMux) {
+    Write-Host "  Mux:       OFF (sidecar only, MKV untouched)" -ForegroundColor Yellow
 }
 if ($LogFile -ne "") {
     Write-Host "  Log file:  $LogFile" -ForegroundColor DarkGray

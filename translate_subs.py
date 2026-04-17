@@ -1815,6 +1815,7 @@ def _translate_one(
     job: TranslateJob, batch_size: int, stats: dict, profile: dict,
     skip_clean: bool = False,
     keep_sidecar: bool = False,
+    no_mux: bool = False,
     target_lang: dict | None = None,
     remove_bitmap: bool = True,
     force: bool = False,
@@ -1863,7 +1864,7 @@ def _translate_one(
                 tmp.unlink()
 
     # Mux sidecar into MKV + clean unwanted tracks in one remux pass
-    if translated_ok and media.suffix.lower() == ".mkv":
+    if translated_ok and media.suffix.lower() == ".mkv" and not no_mux:
         try:
             _mux_and_clean_single_file(
                 media, rel, keep_sidecar, skip_clean, stats,
@@ -1893,6 +1894,7 @@ def scan_and_translate(
     skip_detect: bool = False,
     skip_clean: bool = False,
     keep_sidecar: bool = False,
+    no_mux: bool = False,
     profile: dict | None = None,
     target_lang: dict | None = None,
     remove_bitmap: bool = True,
@@ -1955,6 +1957,7 @@ def scan_and_translate(
             future = pool.submit(
                 _translate_one, job, batch_size, stats, profile,
                 skip_clean=skip_clean, keep_sidecar=keep_sidecar,
+                no_mux=no_mux,
                 target_lang=target_lang, remove_bitmap=remove_bitmap,
                 force=force,
             )
@@ -1980,7 +1983,7 @@ def scan_and_translate(
         log.info("All %d translation(s) complete", submitted)
 
     # ── Deferred cleaning of skipped MKVs ─────────────────────────────
-    if not skip_clean and skipped_mkvs:
+    if not skip_clean and not no_mux and skipped_mkvs:
         log.info("Cleaning %d skipped MKV(s) ...", len(skipped_mkvs))
         for media in skipped_mkvs:
             try:
@@ -2028,6 +2031,8 @@ def main():
                         help=f"LLM profile to use (default: {default_profile})")
     parser.add_argument("--skip-clean", action="store_true",
                         help="Skip post-translation cleanup of unwanted subtitle tracks from MKVs")
+    parser.add_argument("--no-mux", action="store_true",
+                        help=f"Skip muxing/cleaning the MKV entirely — leave the {sidecar_ext} sidecar alongside the file")
     parser.add_argument("--keep-sidecar", action="store_true",
                         help=f"Keep {sidecar_ext} sidecar files after muxing into MKV")
     parser.add_argument("--skip-detect", action="store_true",
@@ -2080,6 +2085,8 @@ def main():
         log.info("Language detection: OFF (skipping untagged tracks)")
     if args.skip_clean:
         log.info("Post-processing: clean_subs DISABLED")
+    if args.no_mux:
+        log.info("Mux:        OFF (leaving sidecar alongside MKV, no remux)")
     if args.keep_sidecar:
         log.info("Sidecar: KEEP after mux")
     if args.log_file:
@@ -2095,6 +2102,7 @@ def main():
         skip_detect=args.skip_detect,
         skip_clean=args.skip_clean,
         keep_sidecar=args.keep_sidecar,
+        no_mux=args.no_mux,
         profile=profile,
         target_lang=target_lang,
         remove_bitmap=remove_bitmap,

@@ -463,6 +463,7 @@ Type a few letters to filter, arrow keys to select, then choose an action (trans
 | `-Force` | `--force` | Retranslate even if target exists | off |
 | `-DryRun` | `--dry-run` | Preview without making changes | off |
 | `-KeepSidecar` | `--keep-sidecar` | Keep external `.srt` after muxing | off |
+| `-NoMux` | `--no-mux` | Leave external `.srt` alongside the file; don't touch the MKV | off |
 | `-SkipClean` | `--skip-clean` | Don't strip unwanted tracks | off |
 | `-SkipDetect` | `--skip-detect` | Don't detect untagged subtitle languages | off |
 | `-LogFile` | `--log-file` | Also write log output to this file | none |
