@@ -195,6 +195,19 @@ cd Translate_Subs
 
 The wrapper runs the venv Python directly — no manual activation needed.
 
+#### Step 4 (optional): Set up the interactive folder picker
+
+`linux/pick.sh` is a convenience wrapper around `fzf` — instead of typing full paths, you get a fuzzy-searchable list of your TV shows, movies, etc., pick one with arrow keys, then pick an action (translate, clean, mux, force-retranslate, dry-run variants). For TV series it also lets you pick a specific season or all seasons.
+
+```bash
+sudo apt install fzf
+cp media_roots.conf.example media_roots.conf
+nano media_roots.conf        # edit to match your library paths
+./linux/pick.sh
+```
+
+`media_roots.conf` holds one media root path per line (e.g. `/mnt/media/Tv`, `/mnt/media/Movies`). It's gitignored, so `git pull` won't overwrite your paths. You can also pass a path directly: `./linux/pick.sh /mnt/media/Tv`.
+
 #### Updating
 
 On either platform, to pull the latest version while keeping your local config:
