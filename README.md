@@ -134,11 +134,10 @@ Translation and scanning overlap — the first file starts translating while the
 Open PowerShell, navigate to where you want to install, and run the one-liner:
 
 ```powershell
-cd D:\
 irm https://raw.githubusercontent.com/dexusno/Translate_Subs/main/install.ps1 | iex
 ```
 
-This creates a `Translate_Subs` folder in your current directory (e.g. `D:\Translate_Subs`).
+This creates a `Translate_Subs` folder in your current working directory. `cd` to wherever you want it installed first.
 
 The installer will:
 1. Check for Python 3.11+, git, ffmpeg — offer to install via `winget` if missing
@@ -153,8 +152,8 @@ DeepSeek is recommended (see [Configuration](#configuration) below), but any Ope
 #### Step 3: Run it
 
 ```powershell
-cd D:\Translate_Subs
-.\translate_subs.ps1 "D:\Movies\Some Movie"
+cd Translate_Subs
+.\translate_subs.ps1 "C:\Movies\Some Movie"
 ```
 
 ---
@@ -170,11 +169,10 @@ cd D:\Translate_Subs
 Open a terminal, navigate to where you want to install, and run the one-liner:
 
 ```bash
-cd /opt
 curl -fsSL https://raw.githubusercontent.com/dexusno/Translate_Subs/main/linux/install.sh | bash
 ```
 
-This creates a `Translate_Subs` folder in your current directory (e.g. `/opt/Translate_Subs`).
+This creates a `Translate_Subs` folder in your current working directory. `cd` to wherever you want it installed first.
 
 The installer will:
 1. `apt-get install` system dependencies (python3, python3-venv, git, ffmpeg, mkvtoolnix)
@@ -191,7 +189,7 @@ DeepSeek is recommended (see [Configuration](#configuration) below), but any Ope
 #### Step 3: Run it
 
 ```bash
-cd /opt/Translate_Subs
+cd Translate_Subs
 ./linux/translate_subs.sh "/media/tv/Some Show"
 ```
 
@@ -411,19 +409,19 @@ Type a few letters to filter, arrow keys to select, then choose an action (trans
 
 ```powershell
 # Basic — translate everything in a folder
-.\translate_subs.ps1 "D:\Movies\Inception (2010)"
+.\translate_subs.ps1 "C:\Movies\Inception (2010)"
 
 # Entire TV series (all seasons)
-.\translate_subs.ps1 "D:\TvSeries\Breaking Bad"
+.\translate_subs.ps1 "C:\TvSeries\Breaking Bad"
 
 # Preview — see what would be translated
-.\translate_subs.ps1 "D:\Media" -DryRun
+.\translate_subs.ps1 "C:\Media" -DryRun
 
 # Different LLM provider
-.\translate_subs.ps1 "D:\Movies" -Profile openai
+.\translate_subs.ps1 "C:\Movies" -Profile openai
 
 # Limit files, retranslate existing, keep external files
-.\translate_subs.ps1 "D:\Movies" -Limit 5 -Force -KeepSidecar
+.\translate_subs.ps1 "C:\Movies" -Limit 5 -Force -KeepSidecar
 
 # Network share (UNC paths supported)
 .\translate_subs.ps1 "\\nas\media\Movies"
@@ -480,7 +478,7 @@ They're available as standalone scripts if you want to run just one step on its 
 Useful if you already have `.srt` files from another source and just want to embed them:
 
 ```powershell
-.\mux_subs.ps1 "D:\TvSeries\Show"                 # Windows
+.\mux_subs.ps1 "C:\TvSeries\Show"                 # Windows
 ```
 ```bash
 ./linux/mux_subs.sh "/media/tv/Show"               # Linux
@@ -493,7 +491,7 @@ Useful if you already have `.srt` files from another source and just want to emb
 Useful if you just want to strip unwanted languages without translating:
 
 ```powershell
-.\clean_subs.ps1 "D:\Movies" -DryRun               # Windows
+.\clean_subs.ps1 "C:\Movies" -DryRun               # Windows
 ```
 ```bash
 ./linux/clean_subs.sh "/media/movies" --dry-run    # Linux
