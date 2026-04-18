@@ -205,14 +205,13 @@ One-liner to install fzf and create the config file:
 curl -fsSL https://raw.githubusercontent.com/dexusno/Translate_Subs/main/linux/install-pick.sh | bash
 ```
 
-Then edit `media_roots.conf` to match your library paths (one path per line, e.g. `/mnt/media/Tv`, `/mnt/media/Movies`) and run the picker:
+Open `media_roots.conf` in your editor of choice and add one media library path per line (e.g. `/mnt/media/Tv`, `/mnt/media/Movies`). Then run the picker:
 
 ```bash
-nano media_roots.conf
 ./linux/pick.sh
 ```
 
-`media_roots.conf` is gitignored, so `git pull` won't overwrite your paths. You can also pass a path directly: `./linux/pick.sh /mnt/media/Tv`.
+`media_roots.conf` is gitignored, which means it's preserved when you update the project later via `git pull` or the included `update.sh` script — your paths won't be overwritten. You can also pass a path directly: `./linux/pick.sh /mnt/media/Tv`.
 
 #### Updating
 
