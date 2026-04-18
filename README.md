@@ -199,14 +199,20 @@ The wrapper runs the venv Python directly — no manual activation needed.
 
 `linux/pick.sh` is a convenience wrapper around `fzf` — instead of typing full paths, you get a fuzzy-searchable list of your TV shows, movies, etc., pick one with arrow keys, then pick an action (translate, clean, mux, force-retranslate, dry-run variants). For TV series it also lets you pick a specific season or all seasons.
 
+One-liner to install fzf and create the config file:
+
 ```bash
-sudo apt install fzf
-cp media_roots.conf.example media_roots.conf
-nano media_roots.conf        # edit to match your library paths
+curl -fsSL https://raw.githubusercontent.com/dexusno/Translate_Subs/main/linux/install-pick.sh | bash
+```
+
+Then edit `media_roots.conf` to match your library paths (one path per line, e.g. `/mnt/media/Tv`, `/mnt/media/Movies`) and run the picker:
+
+```bash
+nano media_roots.conf
 ./linux/pick.sh
 ```
 
-`media_roots.conf` holds one media root path per line (e.g. `/mnt/media/Tv`, `/mnt/media/Movies`). It's gitignored, so `git pull` won't overwrite your paths. You can also pass a path directly: `./linux/pick.sh /mnt/media/Tv`.
+`media_roots.conf` is gitignored, so `git pull` won't overwrite your paths. You can also pass a path directly: `./linux/pick.sh /mnt/media/Tv`.
 
 #### Updating
 
